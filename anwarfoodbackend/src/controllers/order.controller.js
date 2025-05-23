@@ -5,14 +5,14 @@ const getOrderList = async (req, res) => {
     const userId = req.user.userId;
 
     const [orders] = await db.promise().query(`
-      SELECT co.*, 
-             COUNT(cod.COD_ID) as total_items,
-             SUM(cod.COD_QTY) as total_quantity
-      FROM cust_order co
-      LEFT JOIN cust_order_details cod ON co.CO_ID = cod.COD_CO_ID
-      WHERE co.CO_CUST_CODE = (SELECT USERNAME FROM user_info WHERE USER_ID = ?)
-      GROUP BY co.CO_ID
-      ORDER BY co.CO_DATE DESC
+      SELECT o.*, 
+             COUNT(oi.ORDER_ITEM_ID) as total_items,
+             SUM(oi.QUANTITY) as total_quantity
+      FROM orders o
+      LEFT JOIN order_items oi ON o.ORDER_ID = oi.ORDER_ID
+      WHERE o.USER_ID = ?
+      GROUP BY o.ORDER_ID
+      ORDER BY o.CREATED_DATE DESC
     `, [userId]);
 
     res.json({
@@ -36,8 +36,8 @@ const getOrderDetails = async (req, res) => {
 
     // Get order header
     const [orders] = await db.promise().query(`
-      SELECT * FROM cust_order 
-      WHERE CO_ID = ? AND CO_CUST_CODE = (SELECT USERNAME FROM user_info WHERE USER_ID = ?)
+      SELECT * FROM orders 
+      WHERE ORDER_ID = ? AND USER_ID = ?
     `, [orderId, userId]);
 
     if (orders.length === 0) {
@@ -47,24 +47,21 @@ const getOrderDetails = async (req, res) => {
       });
     }
 
-    // Get order details
-    const [orderDetails] = await db.promise().query(`
-      SELECT * FROM cust_order_details
-      WHERE COD_CO_ID = ?
+    // Get order items with product details
+    const [orderItems] = await db.promise().query(`
+      SELECT oi.*, p.PROD_NAME, p.PROD_IMAGE_1,
+             pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE
+      FROM order_items oi
+      JOIN product p ON oi.PROD_ID = p.PROD_ID
+      JOIN product_unit pu ON oi.UNIT_ID = pu.PU_ID
+      WHERE oi.ORDER_ID = ?
     `, [orderId]);
-
-    // Get payment details
-    const [payments] = await db.promise().query(`
-      SELECT * FROM cust_payment
-      WHERE PAYMENT_MERCHANT_REF_INVOICE_NO = ?
-    `, [orders[0].CO_NO]);
 
     res.json({
       success: true,
       data: {
         order: orders[0],
-        items: orderDetails,
-        payment: payments[0] || null
+        items: orderItems
       }
     });
   } catch (error) {

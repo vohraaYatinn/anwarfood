@@ -114,6 +114,25 @@
               "path": ["api", "products", "category", "1"]
             }
           }
+        },
+        {
+          "name": "Debug: Get Product Units",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token}}"
+              }
+            ],
+            "url": {
+              "raw": "http://localhost:3000/api/products/units/183",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "3000",
+              "path": ["api", "products", "units", "183"]
+            }
+          }
         }
       ]
     },

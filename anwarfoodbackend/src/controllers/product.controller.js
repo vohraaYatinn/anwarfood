@@ -130,8 +130,48 @@ const getProductsUnderCategory = async (req, res) => {
   }
 };
 
+// Debug function to check units for a product
+const getProductUnits = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    // Check if product exists
+    const [products] = await db.promise().query(
+      'SELECT PROD_ID, PROD_NAME FROM product WHERE PROD_ID = ?',
+      [productId]
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Get all units for this product
+    const [units] = await db.promise().query(
+      'SELECT * FROM product_unit WHERE PU_PROD_ID = ?',
+      [productId]
+    );
+
+    res.json({
+      success: true,
+      product: products[0],
+      units: units
+    });
+  } catch (error) {
+    console.error('Error fetching product units:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching product units',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getProductList,
   getProductDetails,
-  getProductsUnderCategory
+  getProductsUnderCategory,
+  getProductUnits
 }; 
