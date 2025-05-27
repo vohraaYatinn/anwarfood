@@ -44,7 +44,7 @@ class _CartPageState extends State<CartPage> {
       if (data['success'] == true) {
         setState(() {
           cartItems = data['data']['items'];
-          total = data['data']['total'];
+          total = _calculateTotal();
           isLoading = false;
         });
       } else {
@@ -56,6 +56,16 @@ class _CartPageState extends State<CartPage> {
         isLoading = false;
       });
     }
+  }
+
+  int _calculateTotal() {
+    int calculatedTotal = 0;
+    for (var item in cartItems) {
+      int price = int.tryParse(item['PROD_SP']?.toString() ?? '0') ?? 0;
+      int quantity = int.tryParse(item['QUANTITY']?.toString() ?? '0') ?? 0;
+      calculatedTotal += price * quantity;
+    }
+    return calculatedTotal;
   }
 
   Future<void> fetchDefaultAddress() async {
@@ -347,13 +357,6 @@ class _CartPageState extends State<CartPage> {
                           ),
                         ),
                         const SizedBox(height: 18),
-                        Row(
-                          children: [
-                            const Text('To Pay: ', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                            Text('₹$total ', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
                         GestureDetector(
                           onTap: () {
                             Navigator.pushNamed(context, '/address-list');
