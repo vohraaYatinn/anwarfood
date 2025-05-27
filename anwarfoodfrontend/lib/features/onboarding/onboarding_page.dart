@@ -1,7 +1,15 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
 
-class OnboardingPage extends StatelessWidget {
+class OnboardingPage extends StatefulWidget {
   const OnboardingPage({Key? key}) : super(key: key);
+
+  @override
+  State<OnboardingPage> createState() => _OnboardingPageState();
+}
+
+class _OnboardingPageState extends State<OnboardingPage> {
+  final AuthService _authService = AuthService();
 
   @override
   Widget build(BuildContext context) {
@@ -75,8 +83,9 @@ class OnboardingPage extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/signup');
+                      onPressed: () async {
+                        await _authService.setOnboardingCompleted();
+                        Navigator.pushReplacementNamed(context, '/login');
                       },
                       child: const Text(
                         "Let's Get Started",
@@ -91,7 +100,10 @@ class OnboardingPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 TextButton(
-                  onPressed: () {},
+                  onPressed: () async {
+                    await _authService.setOnboardingCompleted();
+                    Navigator.pushReplacementNamed(context, '/login');
+                  },
                   child: Text(
                     'Skip',
                     style: TextStyle(

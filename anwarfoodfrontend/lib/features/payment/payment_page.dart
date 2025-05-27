@@ -1,7 +1,66 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../services/auth_service.dart';
+import '../order/order_success_page.dart';
 
-class PaymentPage extends StatelessWidget {
+class PaymentPage extends StatefulWidget {
   const PaymentPage({Key? key}) : super(key: key);
+
+  @override
+  State<PaymentPage> createState() => _PaymentPageState();
+}
+
+class _PaymentPageState extends State<PaymentPage> {
+  final AuthService _authService = AuthService();
+  bool _isLoading = false;
+
+  Future<void> _placeOrder() async {
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.post(
+        Uri.parse('http://localhost:3000/api/cart/place-order'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      if (data['success'] == true) {
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OrderSuccessPage(orderDetails: data['data']),
+            ),
+          );
+        }
+      } else {
+        throw Exception(data['message'] ?? 'Failed to place order');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error placing order: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -49,49 +108,83 @@ class PaymentPage extends StatelessWidget {
               const SizedBox(height: 10),
               Container(
                 width: double.infinity,
-                padding: const EdgeInsets.all(14),
+                padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: const [
-                        Icon(Icons.radio_button_checked, color: Color(0xFF7B61FF), size: 18),
-                        SizedBox(width: 6),
-                        Text('Instamart', style: TextStyle(fontWeight: FontWeight.bold)),
-                        SizedBox(width: 4),
-                        Expanded(
-                          child: Text(' | MBR Building Kasavanahalli Main Rd,...', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 13)),
-                        ),
-                      ],
+                    const Text(
+                      'Payment Method',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: const [
-                        Icon(Icons.radio_button_checked, color: Color(0xFF7B61FF), size: 18),
-                        SizedBox(width: 6),
-                        Text('Greenwood', style: TextStyle(fontWeight: FontWeight.bold)),
-                        SizedBox(width: 4),
-                        Expanded(
-                          child: Text(' | Sarjapur Marathahalli Road, Kaiko...', overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 13)),
+                    const SizedBox(height: 16),
+                    InkWell(
+                      onTap: _isLoading ? null : _placeOrder,
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    const Text('Delivery In:  ', style: TextStyle(color: Colors.grey, fontSize: 13)),
-                    const Padding(
-                      padding: EdgeInsets.only(left: 80.0),
-                      child: Text('10 mins', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 14)),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.delivery_dining,
+                                color: Color(0xFF9B1B1B),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            const Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Pay on Delivery',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Pay when you receive your order',
+                                    style: TextStyle(
+                                      color: Colors.grey,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (_isLoading)
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            else
+                              const Icon(
+                                Icons.arrow_forward_ios,
+                                size: 16,
+                                color: Colors.grey,
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),

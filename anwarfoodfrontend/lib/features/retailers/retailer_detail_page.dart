@@ -142,6 +142,25 @@ class RetailerDetailPage extends StatelessWidget {
         selectedItemColor: const Color(0xFF9B1B1B),
         unselectedItemColor: Colors.grey,
         currentIndex: 2,
+        onTap: (index) {
+          switch (index) {
+            case 0:
+              Navigator.pushNamed(context, '/orders');
+              break;
+            case 1:
+              Navigator.pushNamed(context, '/product-list');
+              break;
+            case 2:
+              Navigator.pushNamed(context, '/self-retailer-detail');
+              break;
+            case 3:
+              Navigator.pushNamed(context, '/home');
+              break;
+            case 4:
+              Navigator.pushNamed(context, '/profile');
+              break;
+          }
+        },
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.shopping_cart_outlined),

@@ -12,6 +12,7 @@ import 'features/orders/orders_page.dart';
 import 'features/orders/order_details_page.dart';
 import 'features/retailers/retailer_list_page.dart';
 import 'features/retailers/retailer_detail_page.dart';
+import 'features/retailers/self_retailer_detail_page.dart';
 import 'features/home/home_page.dart';
 import 'features/cart/cart_page.dart';
 import 'features/payment/payment_page.dart';
@@ -20,6 +21,7 @@ import 'features/home/profile_page.dart';
 import 'features/profile/address_list_page.dart';
 import 'features/profile/add_address_page.dart';
 import 'features/notifications/notification_page.dart';
+import 'startup_page.dart';
 
 void main() {
   runApp(const ShoppursShopApp());
@@ -39,7 +41,8 @@ class ShoppursShopApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       initialRoute: '/',
       routes: {
-        '/': (context) => OnboardingPage(),
+        '/': (context) => const StartupPage(),
+        '/onboarding': (context) => const OnboardingPage(),
         '/signup': (context) => SignupPage(),
         '/login': (context) => LoginPage(),
         '/otp-verify': (context) => OtpVerifyPage(),
@@ -52,6 +55,7 @@ class ShoppursShopApp extends StatelessWidget {
         '/order-details': (context) => const OrderDetailsPage(),
         '/retailers': (context) => RetailerListPage(),
         '/retailer-detail': (context) => RetailerDetailPage(),
+        '/self-retailer-detail': (context) => const SelfRetailerDetailPage(),
         '/home': (context) => HomePage(),
         '/cart': (context) => CartPage(),
         '/payment': (context) => PaymentPage(),

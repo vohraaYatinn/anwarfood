@@ -1,7 +1,43 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
+import '../../models/user_model.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final _authService = AuthService();
+  User? _user;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = await _authService.getUser();
+    setState(() {
+      _user = user;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    await _authService.logout();
+    if (mounted) {
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/',
+        (route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,120 +56,116 @@ class ProfilePage extends StatelessWidget {
         ),
         centerTitle: false,
       ),
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: Colors.white,
-              child: Row(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
                 children: [
-                  CircleAvatar(
-                    radius: 40,
-                    backgroundColor: const Color(0xFFF8F6F9),
-                    child: Image.asset(
-                      'assets/images/user1.png',
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: const [
-                        Text(
-                          'John Doe',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 20,
+                  Container(
+                    padding: const EdgeInsets.all(16),
+                    color: Colors.white,
+                    child: Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 40,
+                          backgroundColor: const Color(0xFFF8F6F9),
+                          child: Image.asset(
+                            'assets/images/user1.png',
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          'john.doe@example.com',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 14,
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _user?.username ?? 'User',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 20,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _user?.email ?? 'No email',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _user?.mobile != null ? '+91 ${_user!.mobile}' : 'No mobile',
+                                style: const TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        SizedBox(height: 4),
-                        Text(
-                          '+91 98765 43210',
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 14,
-                          ),
+                        IconButton(
+                          icon: const Icon(Icons.edit_outlined, color: Color(0xFF9B1B1B)),
+                          onPressed: () {
+                            // TODO: Navigate to edit profile
+                          },
                         ),
                       ],
                     ),
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: Color(0xFF9B1B1B)),
-                    onPressed: () {
-                      // TODO: Navigate to edit profile
+                  const SizedBox(height: 12),
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.location_on_outlined,
+                    title: 'My Addresses',
+                    onTap: () {
+                      Navigator.pushNamed(context, '/address-list');
                     },
+                  ),
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.shopping_bag_outlined,
+                    title: 'My Orders',
+                    onTap: () {
+                      Navigator.pushNamed(context, '/orders');
+                    },
+                  ),
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.favorite_border,
+                    title: 'My Wishlist',
+                    onTap: () {
+                      // TODO: Navigate to wishlist
+                    },
+                  ),
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.notifications_none,
+                    title: 'Notifications',
+                    onTap: () {
+                      // TODO: Navigate to notifications
+                    },
+                  ),
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.help_outline,
+                    title: 'Help & Support',
+                    onTap: () {
+                      // TODO: Navigate to help & support
+                    },
+                  ),
+                  _buildMenuItem(
+                    context,
+                    icon: Icons.logout,
+                    title: 'Logout',
+                    onTap: _handleLogout,
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            _buildMenuItem(
-              context,
-              icon: Icons.location_on_outlined,
-              title: 'My Addresses',
-              onTap: () {
-                Navigator.pushNamed(context, '/address-list');
-              },
-            ),
-            _buildMenuItem(
-              context,
-              icon: Icons.shopping_bag_outlined,
-              title: 'My Orders',
-              onTap: () {
-                Navigator.pushNamed(context, '/orders');
-              },
-            ),
-            _buildMenuItem(
-              context,
-              icon: Icons.favorite_border,
-              title: 'My Wishlist',
-              onTap: () {
-                // TODO: Navigate to wishlist
-              },
-            ),
-            _buildMenuItem(
-              context,
-              icon: Icons.notifications_none,
-              title: 'Notifications',
-              onTap: () {
-                // TODO: Navigate to notifications
-              },
-            ),
-            _buildMenuItem(
-              context,
-              icon: Icons.help_outline,
-              title: 'Help & Support',
-              onTap: () {
-                // TODO: Navigate to help & support
-              },
-            ),
-            _buildMenuItem(
-              context,
-              icon: Icons.logout,
-              title: 'Logout',
-              onTap: () {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/',
-                  (route) => false,
-                );
-              },
-            ),
-          ],
-        ),
-      ),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF9B1B1B),
@@ -148,7 +180,7 @@ class ProfilePage extends StatelessWidget {
               Navigator.pushNamed(context, '/product-list');
               break;
             case 2:
-              Navigator.pushNamed(context, '/retailers');
+              Navigator.pushNamed(context, '/self-retailer-detail');
               break;
             case 3:
               Navigator.pushNamed(context, '/home');

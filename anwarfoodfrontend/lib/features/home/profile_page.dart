@@ -1,7 +1,66 @@
 import 'package:flutter/material.dart';
+import '../../services/auth_service.dart';
+import '../../models/user_model.dart';
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
+
+  @override
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+
+class _ProfilePageState extends State<ProfilePage> {
+  final _authService = AuthService();
+  User? _user;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserData();
+  }
+
+  Future<void> _loadUserData() async {
+    final user = await _authService.getUser();
+    setState(() {
+      _user = user;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _handleLogout() async {
+    final shouldLogout = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Logout',
+              style: TextStyle(color: Color(0xFF9B1B1B)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (shouldLogout == true && mounted) {
+      await _authService.logout();
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/',
+          (route) => false,
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,86 +79,82 @@ class ProfilePage extends StatelessWidget {
         ),
         centerTitle: true,
       ),
-      body: Column(
-        children: [
-          const SizedBox(height: 24),
-          Center(
-            child: Container(
-              width: 90,
-              height: 90,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(45),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black12,
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(45),
-                child: Image.asset('assets/images/user1.png', fit: BoxFit.cover),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Amit Sharma',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 20,
-            ),
-          ),
-          const SizedBox(height: 4),
-          const Text(
-            '+91 98101 60596',
-            style: TextStyle(
-              color: Colors.grey,
-              fontSize: 15,
-            ),
-          ),
-          const SizedBox(height: 24),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
               children: [
-                _ProfileOption(
-                  icon: Icons.shopping_cart_outlined,
-                  label: 'My Orders',
-                  onTap: () => Navigator.pushNamed(context, '/orders'),
+                const SizedBox(height: 24),
+                Center(
+                  child: Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(45),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Colors.black12,
+                          blurRadius: 8,
+                          offset: Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(45),
+                      child: Image.asset('assets/images/user1.png', fit: BoxFit.cover),
+                    ),
+                  ),
                 ),
-                _ProfileOption(
-                  icon: Icons.location_on_outlined,
-                  label: 'My Addresses',
-                  onTap: () => Navigator.pushNamed(context, '/address-list'),
+                const SizedBox(height: 16),
+                Text(
+                  _user?.username ?? 'User',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 20,
+                  ),
                 ),
-                _ProfileOption(
-                  icon: Icons.help_outline,
-                  label: 'Help & Support',
-                  onTap: () {},
+                const SizedBox(height: 4),
+                Text(
+                  _user?.mobile != null ? '+91 ${_user!.mobile}' : 'No mobile',
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontSize: 15,
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Divider(),
-                const SizedBox(height: 8),
-                _ProfileOption(
-                  icon: Icons.logout,
-                  label: 'Logout',
-                  color: Color(0xFF9B1B1B),
-                  onTap: () {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/',
-                      (route) => false,
-                    );
-                  },
+                const SizedBox(height: 24),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    children: [
+                      _ProfileOption(
+                        icon: Icons.shopping_cart_outlined,
+                        label: 'My Orders',
+                        onTap: () => Navigator.pushNamed(context, '/orders'),
+                      ),
+                      _ProfileOption(
+                        icon: Icons.location_on_outlined,
+                        label: 'My Addresses',
+                        onTap: () => Navigator.pushNamed(context, '/address-list'),
+                      ),
+                      _ProfileOption(
+                        icon: Icons.help_outline,
+                        label: 'Help & Support',
+                        onTap: () {},
+                      ),
+                      const SizedBox(height: 8),
+                      const Divider(),
+                      const SizedBox(height: 8),
+                      _ProfileOption(
+                        icon: Icons.logout,
+                        label: 'Logout',
+                        color: const Color(0xFF9B1B1B),
+                        onTap: _handleLogout,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

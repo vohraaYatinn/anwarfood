@@ -1,27 +1,42 @@
 import 'package:flutter/material.dart';
+import '../../models/address_model.dart';
 import '../../services/address_service.dart';
 
-class AddAddressPage extends StatefulWidget {
-  const AddAddressPage({Key? key}) : super(key: key);
+class EditAddressPage extends StatefulWidget {
+  final Address address;
+  const EditAddressPage({Key? key, required this.address}) : super(key: key);
 
   @override
-  State<AddAddressPage> createState() => _AddAddressPageState();
+  State<EditAddressPage> createState() => _EditAddressPageState();
 }
 
-class _AddAddressPageState extends State<AddAddressPage> {
+class _EditAddressPageState extends State<EditAddressPage> {
   final _formKey = GlobalKey<FormState>();
   final _addressService = AddressService();
-  final _addressController = TextEditingController();
-  final _cityController = TextEditingController();
-  final _stateController = TextEditingController();
-  final _countryController = TextEditingController();
-  final _pincodeController = TextEditingController();
-  final _landmarkController = TextEditingController();
-  
+  late TextEditingController _addressController;
+  late TextEditingController _cityController;
+  late TextEditingController _stateController;
+  late TextEditingController _countryController;
+  late TextEditingController _pincodeController;
+  late TextEditingController _landmarkController;
   String _selectedType = 'Home';
   bool _isDefault = false;
   bool _isLoading = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    final a = widget.address;
+    _addressController = TextEditingController(text: a.address);
+    _cityController = TextEditingController(text: a.city);
+    _stateController = TextEditingController(text: a.state);
+    _countryController = TextEditingController(text: a.country);
+    _pincodeController = TextEditingController(text: a.pincode);
+    _landmarkController = TextEditingController(text: a.landmark);
+    _selectedType = a.addressType.isNotEmpty ? a.addressType : 'Home';
+    _isDefault = a.isDefault;
+  }
 
   @override
   void dispose() {
@@ -36,14 +51,13 @@ class _AddAddressPageState extends State<AddAddressPage> {
 
   Future<void> _saveAddress() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() {
       _isLoading = true;
       _error = null;
     });
-
     try {
-      await _addressService.addAddress(
+      await _addressService.editAddress(
+        addressId: widget.address.addressId,
         address: _addressController.text,
         city: _cityController.text,
         state: _stateController.text,
@@ -53,9 +67,8 @@ class _AddAddressPageState extends State<AddAddressPage> {
         isDefault: _isDefault,
         landmark: _landmarkController.text,
       );
-
       if (mounted) {
-        Navigator.pop(context, true); // Return true to indicate success
+        Navigator.pop(context, true);
       }
     } catch (e) {
       setState(() {
@@ -82,7 +95,7 @@ class _AddAddressPageState extends State<AddAddressPage> {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'Add New Address',
+          'Edit Address',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -118,17 +131,11 @@ class _AddAddressPageState extends State<AddAddressPage> {
                       const SizedBox(height: 12),
                       Row(
                         children: [
-                          Expanded(
-                            child: _buildTypeButton('Home'),
-                          ),
+                          Expanded(child: _buildTypeButton('Home')),
                           const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTypeButton('Office'),
-                          ),
+                          Expanded(child: _buildTypeButton('Office')),
                           const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildTypeButton('Other'),
-                          ),
+                          Expanded(child: _buildTypeButton('Other')),
                         ],
                       ),
                     ],
@@ -325,7 +332,7 @@ class _AddAddressPageState extends State<AddAddressPage> {
                             ),
                           )
                         : const Text(
-                            'Save Address',
+                            'Save Changes',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,

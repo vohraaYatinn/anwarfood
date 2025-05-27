@@ -136,7 +136,7 @@ class RetailerListPage extends StatelessWidget {
               Navigator.pushNamed(context, '/product-list');
               break;
             case 2:
-              // Already on retailers
+              Navigator.pushNamed(context, '/self-retailer-detail');
               break;
             case 3:
               Navigator.pushNamed(context, '/home');
