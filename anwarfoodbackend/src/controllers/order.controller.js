@@ -1,4 +1,4 @@
-const db = require('../config/database');
+const { pool: db } = require('../config/database');
 
 const getOrderList = async (req, res) => {
   try {

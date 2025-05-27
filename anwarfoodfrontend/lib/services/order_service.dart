@@ -11,7 +11,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/orders/list'),
+        Uri.parse('https://anwarfood.onrender.com/api/orders/list'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -35,7 +35,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/orders/details/$orderId'),
+        Uri.parse('https://anwarfood.onrender.com/api/orders/details/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

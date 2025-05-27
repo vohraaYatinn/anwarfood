@@ -4,7 +4,7 @@ import '../models/product_model.dart';
 import 'auth_service.dart';
 
 class ProductService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'https://anwarfood.onrender.com';
   final AuthService _authService = AuthService();
 
   Future<List<Product>> getProductsByCategory(int categoryId) async {
@@ -49,7 +49,7 @@ class ProductService {
       final token = await _authService.getToken();
       if (token == null) throw Exception('No authentication token found');
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/products/search?query=$query'),
+        Uri.parse('https://anwarfood.onrender.com/api/products/search?query=$query'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

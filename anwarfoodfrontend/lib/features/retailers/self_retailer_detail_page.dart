@@ -33,7 +33,7 @@ class _SelfRetailerDetailPageState extends State<SelfRetailerDetailPage> {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/retailers/my-retailer'),
+        Uri.parse('https://anwarfood.onrender.com/api/retailers/my-retailer'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -185,7 +185,7 @@ class _SelfRetailerDetailPageState extends State<SelfRetailerDetailPage> {
             borderRadius: BorderRadius.circular(12),
             child: retailer['RET_PHOTO'] != null
                 ? Image.network(
-                    'http://localhost:3000/uploads/retailers/${retailer['RET_PHOTO']}',
+                    'https://anwarfood.onrender.com/uploads/retailers/${retailer['RET_PHOTO']}',
                     width: 220,
                     height: 110,
                     fit: BoxFit.cover,

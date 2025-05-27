@@ -214,13 +214,13 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 18),
                   Center(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 16.0),
                       child: Text.rich(
                         TextSpan(
                           text: 'By clicking, you accept the ',
                           style: const TextStyle(
                             color: Colors.grey,
-                            fontSize: 13,
+                            fontSize: 12,
                           ),
                           children: const [
                             TextSpan(
@@ -228,6 +228,7 @@ class _LoginPageState extends State<LoginPage> {
                               style: TextStyle(
                                 color: Color(0xFF9B1B1B),
                                 decoration: TextDecoration.underline,
+                                fontSize: 12,
                               ),
                             ),
                             TextSpan(text: ' and '),
@@ -236,11 +237,14 @@ class _LoginPageState extends State<LoginPage> {
                               style: TextStyle(
                                 color: Color(0xFF9B1B1B),
                                 decoration: TextDecoration.underline,
+                                fontSize: 12,
                               ),
                             ),
                           ],
                         ),
                         textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ),
@@ -262,8 +266,9 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 16),
                   Center(
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         const Text(
                           'New user? ',

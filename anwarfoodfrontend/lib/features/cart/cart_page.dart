@@ -34,7 +34,7 @@ class _CartPageState extends State<CartPage> {
       final token = await _authService.getToken();
       if (token == null) throw Exception('No authentication token found');
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/cart/fetch'),
+        Uri.parse('https://anwarfood.onrender.com/api/cart/fetch'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -73,7 +73,7 @@ class _CartPageState extends State<CartPage> {
       final token = await _authService.getToken();
       if (token == null) throw Exception('No authentication token found');
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/address/default'),
+        Uri.parse('https://anwarfood.onrender.com/api/address/default'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -98,7 +98,7 @@ class _CartPageState extends State<CartPage> {
       if (token == null) throw Exception('No authentication token found');
       
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/cart/increase-quantity'),
+        Uri.parse('https://anwarfood.onrender.com/api/cart/increase-quantity'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -131,7 +131,7 @@ class _CartPageState extends State<CartPage> {
       if (token == null) throw Exception('No authentication token found');
       
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/cart/decrease-quantity'),
+        Uri.parse('https://anwarfood.onrender.com/api/cart/decrease-quantity'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'https://anwarfood.onrender.com';
   static const String _userKey = 'user_data';
   static const String _tokenKey = 'auth_token';
   static const String _onboardingKey = 'onboarding_completed';

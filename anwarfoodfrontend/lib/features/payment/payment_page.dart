@@ -24,7 +24,7 @@ class _PaymentPageState extends State<PaymentPage> {
       if (token == null) throw Exception('No authentication token found');
       
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/cart/place-order'),
+        Uri.parse('https://anwarfood.onrender.com/api/cart/place-order'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
