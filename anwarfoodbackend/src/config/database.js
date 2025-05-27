@@ -3,10 +3,10 @@ require('dotenv').config();
 
 // Create a connection pool instead of a single connection
 const pool = mysql.createPool({
-  host: 'sql12.freesqldatabase.com',
-  user: 'sql12781540',
-  password: 'rijjEPTqBB',
-  database: 'sql12781540',
+  host: 'bysjhtucyklqdqiszive-mysql.services.clever-cloud.com',
+  user: 'uh6qrnhqahuccwz1',
+  password: '6yj0tnzmP0i7RyuD7aLp',
+  database: 'bysjhtucyklqdqiszive',
   port: 3306,
   connectionLimit: 5,
   queueLimit: 0,
