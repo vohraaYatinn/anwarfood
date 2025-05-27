@@ -2,10 +2,11 @@ const mysql = require('mysql2');
 require('dotenv').config();
 
 const db = mysql.createConnection({
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'defaultpassword',
-  database: process.env.DB_NAME || 'shoppurs'
+  host: 'sql12.freesqldatabase.com',
+  user: 'sql12781540',
+  password: 'rijjEPTqBB',
+  database: 'sql12781540',
+  port: 3306
 });
 
 db.connect((err) => {
