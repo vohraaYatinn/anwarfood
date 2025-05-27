@@ -169,9 +169,71 @@ const getProductUnits = async (req, res) => {
   }
 };
 
+const searchProducts = async (req, res) => {
+  try {
+    const { query } = req.query;
+
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required'
+      });
+    }
+
+    // Search products with matching name
+    const [products] = await db.promise().query(`
+      SELECT p.*, c.CATEGORY_NAME, sc.SUB_CATEGORY_NAME,
+      GROUP_CONCAT(DISTINCT pu.PU_ID, ':', pu.PU_PROD_UNIT, ':', pu.PU_PROD_UNIT_VALUE, ':', pu.PU_PROD_RATE) as units
+      FROM product p
+      LEFT JOIN category c ON p.PROD_CAT_ID = c.CATEGORY_ID
+      LEFT JOIN sub_category sc ON p.PROD_SUB_CAT_ID = sc.SUB_CATEGORY_ID
+      LEFT JOIN product_unit pu ON p.PROD_ID = pu.PU_PROD_ID
+      WHERE p.PROD_NAME LIKE ?
+      AND (p.DEL_STATUS = 'A' OR p.DEL_STATUS IS NULL)
+      GROUP BY p.PROD_ID
+      ORDER BY 
+        CASE 
+          WHEN p.PROD_NAME LIKE ? THEN 1
+          WHEN p.PROD_NAME LIKE ? THEN 2
+          ELSE 3
+        END,
+        p.PROD_NAME ASC
+    `, [`%${query}%`, `${query}%`, `%${query}%`]);
+
+    // Format the units data
+    const formattedProducts = products.map(product => ({
+      ...product,
+      units: product.units
+        ? product.units.split(',').map(unitStr => {
+            const [unitId, unitName, unitValue, unitRate] = unitStr.split(':');
+            return { 
+              id: unitId, 
+              name: unitName, 
+              value: unitValue, 
+              rate: unitRate 
+            };
+          })
+        : []
+    }));
+
+    res.json({
+      success: true,
+      data: formattedProducts
+    });
+  } catch (error) {
+    console.error('Error searching products:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error searching products',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getProductList,
   getProductDetails,
   getProductsUnderCategory,
-  getProductUnits
+  getProductUnits,
+  searchProducts
 }; 

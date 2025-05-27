@@ -131,8 +131,56 @@ const editAddress = async (req, res) => {
   }
 };
 
+const getDefaultAddress = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // First try to get the default address
+    const [defaultAddress] = await db.promise().query(`
+      SELECT * FROM customer_address 
+      WHERE USER_ID = ? AND IS_DEFAULT = 1 AND DEL_STATUS != 'Y'
+      LIMIT 1
+    `, [userId]);
+
+    // If no default address found, get the most recently added address
+    if (defaultAddress.length === 0) {
+      const [recentAddress] = await db.promise().query(`
+        SELECT * FROM customer_address 
+        WHERE USER_ID = ? AND DEL_STATUS != 'Y'
+        ORDER BY CREATED_DATE DESC
+        LIMIT 1
+      `, [userId]);
+
+      if (recentAddress.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No address found for the user'
+        });
+      }
+
+      return res.json({
+        success: true,
+        data: recentAddress[0]
+      });
+    }
+
+    res.json({
+      success: true,
+      data: defaultAddress[0]
+    });
+  } catch (error) {
+    console.error('Error fetching default address:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching default address',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getAddressList,
   addAddress,
-  editAddress
+  editAddress,
+  getDefaultAddress
 }; 

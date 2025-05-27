@@ -264,8 +264,136 @@ const placeOrder = async (req, res) => {
   }
 };
 
+const increaseQuantity = async (req, res) => {
+  try {
+    const { cartId } = req.body;
+    const userId = req.user.userId;
+
+    // Check if cart item exists and belongs to the user
+    const [existingItems] = await db.promise().query(
+      'SELECT * FROM cart WHERE CART_ID = ? AND USER_ID = ?',
+      [cartId, userId]
+    );
+
+    if (existingItems.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cart item not found or does not belong to user'
+      });
+    }
+
+    // Increase quantity by 1
+    await db.promise().query(
+      'UPDATE cart SET QUANTITY = QUANTITY + 1, UPDATED_DATE = NOW() WHERE CART_ID = ? AND USER_ID = ?',
+      [cartId, userId]
+    );
+
+    // Get updated cart item details
+    const [updatedItem] = await db.promise().query(`
+      SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE
+      FROM cart c
+      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
+      WHERE c.CART_ID = ? AND c.USER_ID = ?
+    `, [cartId, userId]);
+
+    res.json({
+      success: true,
+      message: 'Quantity increased successfully',
+      data: {
+        cartId: updatedItem[0].CART_ID,
+        quantity: updatedItem[0].QUANTITY,
+        itemTotal: updatedItem[0].PU_PROD_RATE * updatedItem[0].QUANTITY
+      }
+    });
+  } catch (error) {
+    console.error('Increase quantity error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error increasing quantity',
+      error: error.message
+    });
+  }
+};
+
+const decreaseQuantity = async (req, res) => {
+  try {
+    const { cartId } = req.body;
+    const userId = req.user.userId;
+
+    // Check if cart item exists and belongs to the user
+    const [existingItems] = await db.promise().query(
+      'SELECT * FROM cart WHERE CART_ID = ? AND USER_ID = ?',
+      [cartId, userId]
+    );
+
+    if (existingItems.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cart item not found or does not belong to user'
+      });
+    }
+
+    const currentQuantity = existingItems[0].QUANTITY;
+
+    // If quantity is 1, remove the item from cart
+    if (currentQuantity <= 1) {
+      await db.promise().query(
+        'DELETE FROM cart WHERE CART_ID = ? AND USER_ID = ?',
+        [cartId, userId]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Item removed from cart',
+        data: {
+          cartId: cartId,
+          quantity: 0,
+          itemTotal: 0,
+          removed: true
+        }
+      });
+    }
+
+    // Decrease quantity by 1
+    await db.promise().query(
+      'UPDATE cart SET QUANTITY = QUANTITY - 1, UPDATED_DATE = NOW() WHERE CART_ID = ? AND USER_ID = ?',
+      [cartId, userId]
+    );
+
+    // Get updated cart item details
+    const [updatedItem] = await db.promise().query(`
+      SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE
+      FROM cart c
+      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
+      WHERE c.CART_ID = ? AND c.USER_ID = ?
+    `, [cartId, userId]);
+
+    res.json({
+      success: true,
+      message: 'Quantity decreased successfully',
+      data: {
+        cartId: updatedItem[0].CART_ID,
+        quantity: updatedItem[0].QUANTITY,
+        itemTotal: updatedItem[0].PU_PROD_RATE * updatedItem[0].QUANTITY,
+        removed: false
+      }
+    });
+  } catch (error) {
+    console.error('Decrease quantity error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error decreasing quantity',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   addToCart,
   fetchCart,
-  placeOrder
+  placeOrder,
+  increaseQuantity,
+  decreaseQuantity
 }; 
