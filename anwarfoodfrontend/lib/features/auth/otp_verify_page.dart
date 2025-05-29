@@ -55,7 +55,7 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/auth/verify-otp'),
+        Uri.parse('https://anwarfood.onrender.com/api/auth/verify-otp'),
         headers: {
           'Content-Type': 'application/json',
         },

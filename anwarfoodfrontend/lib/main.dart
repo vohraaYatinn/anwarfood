@@ -22,8 +22,27 @@ import 'features/profile/address_list_page.dart';
 import 'features/profile/add_address_page.dart';
 import 'features/notifications/notification_page.dart';
 import 'startup_page.dart';
+import 'debug_helper.dart';
+import 'services/http_client.dart';
+import 'services/connectivity_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize HTTP client for mobile
+  HttpClient.configureClient();
+  
+  // Debug: Log all service URLs to verify they're using Render URL
+  DebugHelper.logAllServiceUrls();
+  
+  // Check connectivity on startup (for mobile)
+  try {
+    final connectivityStatus = await ConnectivityService.checkConnectivity();
+    print('Startup Connectivity Status: ${connectivityStatus.message}');
+  } catch (e) {
+    print('Connectivity check failed: $e');
+  }
+  
   runApp(const ShoppursShopApp());
 }
 

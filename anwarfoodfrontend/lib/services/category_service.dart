@@ -4,7 +4,7 @@ import '../models/category_model.dart';
 import 'auth_service.dart';
 
 class CategoryService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'https://anwarfood.onrender.com';
   final AuthService _authService = AuthService();
 
   Future<List<Category>> getCategories() async {
@@ -13,7 +13,7 @@ class CategoryService {
       throw Exception('No authentication token found');
     }
     final response = await http.get(
-      Uri.parse('$baseUrl/api/categories/list'),
+      Uri.parse('https://anwarfood.onrender.com/api/categories/list'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',

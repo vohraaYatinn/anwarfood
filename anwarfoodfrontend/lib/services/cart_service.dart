@@ -3,7 +3,7 @@ import 'package:http/http.dart' as http;
 import 'auth_service.dart';
 
 class CartService {
-  static const String baseUrl = 'http://localhost:3000';
+  static const String baseUrl = 'https://anwarfood.onrender.com';
   final AuthService _authService = AuthService();
 
   Future<Map<String, dynamic>> addToCart({

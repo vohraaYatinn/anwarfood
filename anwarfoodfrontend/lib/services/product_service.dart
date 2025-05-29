@@ -11,7 +11,7 @@ class ProductService {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('$baseUrl/api/products/category/$categoryId'),
+      Uri.parse('https://anwarfood.onrender.com/api/products/category/$categoryId'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -30,7 +30,7 @@ class ProductService {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('$baseUrl/api/products/details/$productId'),
+      Uri.parse('https://anwarfood.onrender.com/api/products/details/$productId'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',

@@ -85,4 +85,11 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('onboarding_completed') ?? false;
   }
+
+  // Clear all cached data including any localhost references
+  Future<void> clearAllCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+    print('All cached data cleared');
+  }
 } 
