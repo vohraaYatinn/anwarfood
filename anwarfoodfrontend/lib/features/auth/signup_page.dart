@@ -29,7 +29,7 @@ class _SignupPageState extends State<SignupPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://anwarfood.onrender.com/api/auth/signup'),
+        Uri.parse('http://localhost:3000/api/auth/signup'),
         headers: {
           'Content-Type': 'application/json',
         },

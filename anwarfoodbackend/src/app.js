@@ -9,6 +9,9 @@ const cartRoutes = require('./routes/cart.routes');
 const orderRoutes = require('./routes/order.routes');
 const addressRoutes = require('./routes/address.routes');
 const retailerRoutes = require('./routes/retailer.routes');
+const adminRoutes = require('./routes/admin.routes');
+const employeeRoutes = require('./routes/employee.routes');
+const settingsRoutes = require('./routes/settings.routes');
 
 const app = express();
 
@@ -17,11 +20,14 @@ const corsOptions = {
   origin: [
     'http://localhost:3000',
     'http://localhost:65109',
+    'http://localhost:65100',
+    'http://localhost:65111',
     'http://localhost:8080',
     'http://127.0.0.1:3000',
-    'http://127.0.0.1:65109',
+    'http://127.0.0.1:65100',
+    'http://127.0.0.1:65111',
     'http://127.0.0.1:8080',
-    'https://anwarfood.onrender.com',
+    'http://localhost:3000',
     // Add any other origins you need for development
   ],
   credentials: true,
@@ -62,6 +68,9 @@ app.use('/api/cart', cartRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/address', addressRoutes);
 app.use('/api/retailers', retailerRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/employee', employeeRoutes);
+app.use('/api/settings', settingsRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

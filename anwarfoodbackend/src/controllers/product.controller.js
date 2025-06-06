@@ -46,9 +46,9 @@ const getProductDetails = async (req, res) => {
       });
     }
 
-    // Get product units
+    // Get only active product units
     const [units] = await db.promise().query(
-      'SELECT * FROM product_unit WHERE PU_PROD_ID = ?',
+      'SELECT * FROM product_unit WHERE PU_PROD_ID = ? AND PU_STATUS = "A"',
       [id]
     );
 
@@ -130,6 +130,66 @@ const getProductsUnderCategory = async (req, res) => {
   }
 };
 
+const getProductsUnderSubCategory = async (req, res) => {
+  try {
+    const { subCategoryId } = req.params;
+
+    // First verify if subcategory exists
+    const [subCategories] = await db.promise().query(
+      'SELECT * FROM sub_category WHERE SUB_CATEGORY_ID = ? AND DEL_STATUS != "Y"',
+      [subCategoryId]
+    );
+
+    if (subCategories.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Sub-category not found'
+      });
+    }
+
+    // Get products under this subcategory
+    const [products] = await db.promise().query(`
+      SELECT p.*, c.CATEGORY_NAME, sc.SUB_CATEGORY_NAME,
+      GROUP_CONCAT(DISTINCT pu.PU_ID, ':', pu.PU_PROD_UNIT, ':', pu.PU_PROD_UNIT_VALUE, ':', pu.PU_PROD_RATE) as units
+      FROM product p
+      LEFT JOIN category c ON p.PROD_CAT_ID = c.CATEGORY_ID
+      LEFT JOIN sub_category sc ON p.PROD_SUB_CAT_ID = sc.SUB_CATEGORY_ID
+      LEFT JOIN product_unit pu ON p.PROD_ID = pu.PU_PROD_ID
+      WHERE p.PROD_SUB_CAT_ID = ? AND (p.DEL_STATUS IS NULL OR p.DEL_STATUS != 'Y')
+      GROUP BY p.PROD_ID
+    `, [subCategoryId]);
+
+    // Format the units data
+    const formattedProducts = products.map(product => ({
+      ...product,
+      units: product.units
+        ? product.units.split(',').map(unitStr => {
+            const [unitId, unitName, unitValue, unitRate] = unitStr.split(':');
+            return { 
+              id: unitId, 
+              name: unitName, 
+              value: unitValue, 
+              rate: unitRate 
+            };
+          })
+        : []
+    }));
+
+    res.json({
+      success: true,
+      data: formattedProducts,
+      count: formattedProducts.length
+    });
+  } catch (error) {
+    console.error('Error fetching products under sub-category:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching products under sub-category',
+      error: error.message
+    });
+  }
+};
+
 // Debug function to check units for a product
 const getProductUnits = async (req, res) => {
   try {
@@ -171,7 +231,7 @@ const getProductUnits = async (req, res) => {
 
 const searchProducts = async (req, res) => {
   try {
-    const { query } = req.query;
+    const { query, subcategory } = req.query;
 
     if (!query) {
       return res.status(400).json({
@@ -180,8 +240,8 @@ const searchProducts = async (req, res) => {
       });
     }
 
-    // Search products with matching name
-    const [products] = await db.promise().query(`
+    // Build the base query
+    let baseQuery = `
       SELECT p.*, c.CATEGORY_NAME, sc.SUB_CATEGORY_NAME,
       GROUP_CONCAT(DISTINCT pu.PU_ID, ':', pu.PU_PROD_UNIT, ':', pu.PU_PROD_UNIT_VALUE, ':', pu.PU_PROD_RATE) as units
       FROM product p
@@ -190,6 +250,19 @@ const searchProducts = async (req, res) => {
       LEFT JOIN product_unit pu ON p.PROD_ID = pu.PU_PROD_ID
       WHERE p.PROD_NAME LIKE ?
       AND (p.DEL_STATUS = 'A' OR p.DEL_STATUS IS NULL)
+    `;
+
+    // Parameters for the query
+    let queryParams = [`%${query}%`];
+
+    // Add subcategory filter if provided
+    if (subcategory) {
+      baseQuery += ` AND p.PROD_SUB_CAT_ID = ?`;
+      queryParams.push(subcategory);
+    }
+
+    // Complete the query with GROUP BY and ORDER BY
+    baseQuery += `
       GROUP BY p.PROD_ID
       ORDER BY 
         CASE 
@@ -198,7 +271,13 @@ const searchProducts = async (req, res) => {
           ELSE 3
         END,
         p.PROD_NAME ASC
-    `, [`%${query}%`, `${query}%`, `%${query}%`]);
+    `;
+
+    // Add the ordering parameters
+    queryParams.push(`${query}%`, `%${query}%`);
+
+    // Execute the search query
+    const [products] = await db.promise().query(baseQuery, queryParams);
 
     // Format the units data
     const formattedProducts = products.map(product => ({
@@ -218,7 +297,12 @@ const searchProducts = async (req, res) => {
 
     res.json({
       success: true,
-      data: formattedProducts
+      data: formattedProducts,
+      count: formattedProducts.length,
+      filters: {
+        query: query,
+        subcategory: subcategory || null
+      }
     });
   } catch (error) {
     console.error('Error searching products:', error);
@@ -234,6 +318,7 @@ module.exports = {
   getProductList,
   getProductDetails,
   getProductsUnderCategory,
+  getProductsUnderSubCategory,
   getProductUnits,
   searchProducts
 }; 

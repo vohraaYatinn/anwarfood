@@ -34,7 +34,7 @@ Updated APK files have been created in `build/app/outputs/flutter-apk/`:
 
 ## 🌐 API Configuration
 
-The app is configured to connect to: **https://anwarfood.onrender.com**
+The app is configured to connect to: **http://localhost:3000**
 
 ### Network Requirements:
 - ✅ HTTPS connections enabled
@@ -48,7 +48,7 @@ The app is configured to connect to: **https://anwarfood.onrender.com**
 
 1. **Check Internet Connection:**
    - Ensure your device has active internet
-   - Try opening a web browser and visiting https://anwarfood.onrender.com
+   - Try opening a web browser and visiting http://localhost:3000
 
 2. **Clear App Data:**
    - Go to Settings > Apps > AnwarFood
@@ -69,13 +69,13 @@ When you start the app, it will log the following in the console:
 
 ```
 === SERVICE URL VERIFICATION ===
-API Config Base URL: https://anwarfood.onrender.com
-HTTP Client Base URL: https://anwarfood.onrender.com
-Auth Service Base URL: https://anwarfood.onrender.com
-Product Service Base URL: https://anwarfood.onrender.com
-Category Service Base URL: https://anwarfood.onrender.com
-Cart Service Base URL: https://anwarfood.onrender.com
-Address Service Base URL: https://anwarfood.onrender.com
+API Config Base URL: http://localhost:3000
+HTTP Client Base URL: http://localhost:3000
+Auth Service Base URL: http://localhost:3000
+Product Service Base URL: http://localhost:3000
+Category Service Base URL: http://localhost:3000
+Cart Service Base URL: http://localhost:3000
+Address Service Base URL: http://localhost:3000
 ================================
 ```
 
@@ -85,7 +85,7 @@ To test if the API is working:
 
 1. **Manual Test:**
    - Open browser on your phone
-   - Visit: https://anwarfood.onrender.com
+   - Visit: http://localhost:3000
    - You should see a response from the server
 
 2. **App Test:**
@@ -125,9 +125,9 @@ To test if the API is working:
 If you encounter any issues:
 1. Try the debug APK first
 2. Check the troubleshooting steps above
-3. Ensure your backend server (https://anwarfood.onrender.com) is running
+3. Ensure your backend server (http://localhost:3000) is running
 4. Verify API endpoints are accessible
 
 ---
 
-**Note:** The app is configured to work with the production API at https://anwarfood.onrender.com. Make sure your backend server is deployed and accessible from mobile networks. 
+**Note:** The app is configured to work with the production API at http://localhost:3000. Make sure your backend server is deployed and accessible from mobile networks. 

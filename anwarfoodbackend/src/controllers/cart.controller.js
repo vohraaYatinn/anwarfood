@@ -69,14 +69,42 @@ const fetchCart = async (req, res) => {
   try {
     const userId = req.user.userId;
 
-    // Fetch cart items
+    // Fetch cart items with complete product and unit details
     const [cartItems] = await db.promise().query(`
-      SELECT c.*, p.PROD_NAME, p.PROD_IMAGE_1, p.PROD_MRP, p.PROD_SP,
-             pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
+      SELECT 
+        c.CART_ID,
+        c.USER_ID,
+        c.PROD_ID,
+        c.UNIT_ID,
+        c.QUANTITY,
+        c.CREATED_DATE,
+        p.PROD_SUB_CAT_ID,
+        p.PROD_NAME,
+        p.PROD_CODE,
+        p.PROD_DESC,
+        p.PROD_MRP,
+        p.PROD_SP,
+        p.PROD_REORDER_LEVEL,
+        p.PROD_QOH,
+        p.PROD_HSN_CODE,
+        p.PROD_CGST,
+        p.PROD_IGST,
+        p.PROD_SGST,
+        p.PROD_MFG_DATE,
+        p.PROD_EXPIRY_DATE,
+        p.PROD_MFG_BY,
+        p.PROD_IMAGE_1,
+        p.PROD_IMAGE_2,
+        p.PROD_IMAGE_3,
+        p.PROD_CAT_ID,
+        pu.PU_PROD_UNIT,
+        pu.PU_PROD_UNIT_VALUE,
+        pu.PU_PROD_RATE,
+        pu.PU_STATUS
       FROM cart c
       JOIN product p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
-      WHERE c.USER_ID = ?
+      WHERE c.USER_ID = ? AND p.DEL_STATUS != 'Y'
     `, [userId]);
 
     // Fetch default address
@@ -103,15 +131,55 @@ const fetchCart = async (req, res) => {
       }
     }
 
-    // Calculate totals
+    // Calculate totals using PU_PROD_RATE
     const cartTotal = cartItems.reduce((total, item) => {
       return total + (item.PU_PROD_RATE * item.QUANTITY);
     }, 0);
 
+    // Format response with nested product and unit details
+    const formattedCartItems = cartItems.map(item => ({
+      cartId: item.CART_ID,
+      userId: item.USER_ID,
+      quantity: item.QUANTITY,
+      createdDate: item.CREATED_DATE,
+      product: {
+        id: item.PROD_ID,
+        subCategoryId: item.PROD_SUB_CAT_ID,
+        categoryId: item.PROD_CAT_ID,
+        name: item.PROD_NAME,
+        code: item.PROD_CODE,
+        description: item.PROD_DESC,
+        mrp: item.PROD_MRP,
+        sellingPrice: item.PROD_SP,
+        reorderLevel: item.PROD_REORDER_LEVEL,
+        quantityOnHand: item.PROD_QOH,
+        hsnCode: item.PROD_HSN_CODE,
+        cgst: item.PROD_CGST,
+        igst: item.PROD_IGST,
+        sgst: item.PROD_SGST,
+        manufacturingDate: item.PROD_MFG_DATE,
+        expiryDate: item.PROD_EXPIRY_DATE,
+        manufacturedBy: item.PROD_MFG_BY,
+        images: {
+          image1: item.PROD_IMAGE_1,
+          image2: item.PROD_IMAGE_2,
+          image3: item.PROD_IMAGE_3
+        }
+      },
+      unit: {
+        id: item.UNIT_ID,
+        name: item.PU_PROD_UNIT,
+        value: item.PU_PROD_UNIT_VALUE,
+        rate: item.PU_PROD_RATE,
+        status: item.PU_STATUS
+      },
+      itemTotal: item.PU_PROD_RATE * item.QUANTITY
+    }));
+
     res.json({
       success: true,
       data: {
-        items: cartItems,
+        items: formattedCartItems,
         total: cartTotal,
         selectedAddress: selectedAddress
       }
@@ -269,28 +337,33 @@ const increaseQuantity = async (req, res) => {
     const { cartId } = req.body;
     const userId = req.user.userId;
 
-    // Check if cart item exists and belongs to the user
-    const [existingItems] = await db.promise().query(
-      'SELECT * FROM cart WHERE CART_ID = ? AND USER_ID = ?',
-      [cartId, userId]
-    );
+    // Get cart item with product unit details
+    const [cartItems] = await db.promise().query(`
+      SELECT c.*, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
+      FROM cart c
+      JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
+      WHERE c.CART_ID = ? AND c.USER_ID = ?
+    `, [cartId, userId]);
 
-    if (existingItems.length === 0) {
+    if (cartItems.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Cart item not found or does not belong to user'
       });
     }
 
-    // Increase quantity by 1
+    const cartItem = cartItems[0];
+    const unitValue = cartItem.PU_PROD_UNIT_VALUE;
+
+    // Increase quantity by unit value
     await db.promise().query(
-      'UPDATE cart SET QUANTITY = QUANTITY + 1, UPDATED_DATE = NOW() WHERE CART_ID = ? AND USER_ID = ?',
-      [cartId, userId]
+      'UPDATE cart SET QUANTITY = QUANTITY + ? WHERE CART_ID = ? AND USER_ID = ?',
+      [unitValue, cartId, userId]
     );
 
     // Get updated cart item details
     const [updatedItem] = await db.promise().query(`
-      SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE
+      SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE, pu.PU_PROD_UNIT_VALUE
       FROM cart c
       JOIN product p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
@@ -321,23 +394,27 @@ const decreaseQuantity = async (req, res) => {
     const { cartId } = req.body;
     const userId = req.user.userId;
 
-    // Check if cart item exists and belongs to the user
-    const [existingItems] = await db.promise().query(
-      'SELECT * FROM cart WHERE CART_ID = ? AND USER_ID = ?',
-      [cartId, userId]
-    );
+    // Get cart item with product unit details
+    const [cartItems] = await db.promise().query(`
+      SELECT c.*, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
+      FROM cart c
+      JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
+      WHERE c.CART_ID = ? AND c.USER_ID = ?
+    `, [cartId, userId]);
 
-    if (existingItems.length === 0) {
+    if (cartItems.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Cart item not found or does not belong to user'
       });
     }
 
-    const currentQuantity = existingItems[0].QUANTITY;
+    const cartItem = cartItems[0];
+    const unitValue = cartItem.PU_PROD_UNIT_VALUE;
+    const currentQuantity = cartItem.QUANTITY;
 
-    // If quantity is 1, remove the item from cart
-    if (currentQuantity <= 1) {
+    // If quantity after decrease would be less than or equal to unit value, remove item
+    if (currentQuantity <= unitValue) {
       await db.promise().query(
         'DELETE FROM cart WHERE CART_ID = ? AND USER_ID = ?',
         [cartId, userId]
@@ -355,15 +432,15 @@ const decreaseQuantity = async (req, res) => {
       });
     }
 
-    // Decrease quantity by 1
+    // Decrease quantity by unit value
     await db.promise().query(
-      'UPDATE cart SET QUANTITY = QUANTITY - 1, UPDATED_DATE = NOW() WHERE CART_ID = ? AND USER_ID = ?',
-      [cartId, userId]
+      'UPDATE cart SET QUANTITY = QUANTITY - ? WHERE CART_ID = ? AND USER_ID = ?',
+      [unitValue, cartId, userId]
     );
 
     // Get updated cart item details
     const [updatedItem] = await db.promise().query(`
-      SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE
+      SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE, pu.PU_PROD_UNIT_VALUE
       FROM cart c
       JOIN product p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
@@ -390,10 +467,41 @@ const decreaseQuantity = async (req, res) => {
   }
 };
 
+const getCartItemCount = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+
+    // Get total items count and sum of quantities
+    const [result] = await db.promise().query(`
+      SELECT 
+        COUNT(CART_ID) as total_items,
+        COALESCE(SUM(QUANTITY), 0) as total_quantity
+      FROM cart 
+      WHERE USER_ID = ?
+    `, [userId]);
+
+    res.json({
+      success: true,
+      data: {
+        totalItems: result[0].total_items,
+        totalQuantity: result[0].total_quantity
+      }
+    });
+  } catch (error) {
+    console.error('Get cart count error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error getting cart count',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   addToCart,
   fetchCart,
   placeOrder,
   increaseQuantity,
-  decreaseQuantity
+  decreaseQuantity,
+  getCartItemCount
 }; 

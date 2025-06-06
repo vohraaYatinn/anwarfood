@@ -33,7 +33,7 @@ class _SelfRetailerDetailPageState extends State<SelfRetailerDetailPage> {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('https://anwarfood.onrender.com/api/retailers/my-retailer'),
+        Uri.parse('http://localhost:3000/api/retailers/my-retailer'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -77,6 +77,16 @@ class _SelfRetailerDetailPageState extends State<SelfRetailerDetailPage> {
           ),
         ),
         centerTitle: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit, color: Colors.black),
+            onPressed: () => Navigator.pushNamed(
+              context, 
+              '/edit-retailer',
+              arguments: retailerData?['retailer']
+            ).then((_) => _fetchRetailerData()),
+          ),
+        ],
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -172,83 +182,95 @@ class _SelfRetailerDetailPageState extends State<SelfRetailerDetailPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          retailer['RET_SHOP_NAME'] ?? 'Shop Name',
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: retailer['RET_PHOTO'] != null
-                ? Image.network(
-                    'https://anwarfood.onrender.com/uploads/retailers/${retailer['RET_PHOTO']}',
-                    width: 220,
-                    height: 110,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) =>
-                        Image.asset(
-                          'assets/images/user2.png',
-                          width: 220,
-                          height: 110,
-                          fit: BoxFit.cover,
-                        ),
-                  )
-                : Image.asset(
-                    'assets/images/user2.png',
-                    width: 220,
-                    height: 110,
-                    fit: BoxFit.cover,
-                  ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text(
+            retailer['RET_SHOP_NAME'] ?? 'Shop Name',
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 20,
+            ),
           ),
         ),
         const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.location_on, size: 18, color: Colors.grey),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                '${retailer['RET_ADDRESS']}, ${retailer['RET_CITY']}, ${retailer['RET_STATE']} - ${retailer['RET_PIN_CODE']}',
-                style: const TextStyle(
-                  color: Colors.grey,
-                  fontSize: 14,
+        SizedBox(
+          width: double.infinity,
+          height: 200,
+          child: retailer['RET_PHOTO'] != null
+              ? Image.network(
+                  retailer['RET_PHOTO'].toString().startsWith('http')
+                      ? retailer['RET_PHOTO']
+                      : 'http://localhost:3000/uploads/retailers/${retailer['RET_PHOTO']}',
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) =>
+                      Image.asset(
+                        'assets/images/user2.png',
+                        width: double.infinity,
+                        height: 200,
+                        fit: BoxFit.cover,
+                      ),
+                )
+              : Image.asset(
+                  'assets/images/user2.png',
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
                 ),
-              ),
-            ),
-          ],
         ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Icon(Icons.phone, size: 18, color: Colors.grey),
-            const SizedBox(width: 6),
-            Text(
-              retailer['RET_MOBILE_NO']?.toString() ?? 'N/A',
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
+        const SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.location_on, size: 18, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '${retailer['RET_ADDRESS']}, ${retailer['RET_CITY']}, ${retailer['RET_STATE']} - ${retailer['RET_PIN_CODE']}',
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Icon(Icons.email, size: 18, color: Colors.grey),
-            const SizedBox(width: 6),
-            Text(
-              retailer['RET_EMAIL_ID'] ?? 'N/A',
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.phone, size: 18, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Text(
+                    retailer['RET_MOBILE_NO']?.toString() ?? 'N/A',
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.email, size: 18, color: Colors.grey),
+                  const SizedBox(width: 6),
+                  Text(
+                    retailer['RET_EMAIL_ID'] ?? 'N/A',
+                    style: const TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ],
     );

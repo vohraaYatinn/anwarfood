@@ -1,6 +1,6 @@
 class ApiConfig {
   // Production API URL
-  static const String baseUrl = 'https://anwarfood.onrender.com';
+  static const String baseUrl = 'http://localhost:3000';
   
   // API Endpoints
   static const String authLogin = '/api/auth/login';

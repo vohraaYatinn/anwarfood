@@ -24,9 +24,10 @@ async function sendVerificationOTP(phone) {
       headers: headers,
       params: params
     });
+    
 
     if (response.status !== 200) {
-      throw new Error("Please wait 60 seconds before trying again.");
+      throw new Error("Please wait 90 seconds before trying again.");
     }
 
     return response.data;
@@ -206,7 +207,8 @@ const login = async (req, res) => {
         id: user.USER_ID,
         username: user.USERNAME,
         email: user.EMAIL,
-        mobile: user.MOBILE
+        mobile: user.MOBILE,
+        role: user.USER_TYPE
       }
     });
   } catch (error) {
@@ -244,15 +246,66 @@ const verifyOtp = async (req, res) => {
       [phone]
     );
 
+    // Check if retailer profile already exists
+    const [existingRetailer] = await db.promise().query(
+      'SELECT * FROM retailer_info WHERE RET_MOBILE_NO = ?',
+      [phone]
+    );
+
+    // Create retailer profile if it doesn't exist
+    if (existingRetailer.length === 0) {
+      // Get the last retailer code
+      const [lastRetailer] = await db.promise().query(
+        'SELECT RET_CODE FROM retailer_info ORDER BY RET_ID DESC LIMIT 1'
+      );
+
+      // Generate next retailer code
+      let nextNumber = 1;
+      if (lastRetailer.length > 0) {
+        const lastCode = lastRetailer[0].RET_CODE;
+        const lastNumber = parseInt(lastCode.replace('RET', ''));
+        nextNumber = lastNumber + 1;
+      }
+
+      // Format the code with leading zeros (e.g., RET001, RET002)
+      const retCode = `RET${nextNumber.toString().padStart(3, '0')}`;
+      
+      await db.promise().query(
+        `INSERT INTO retailer_info (
+          RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
+          RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY, RET_STATE, RET_CITY, 
+          RET_DEL_STATUS, CREATED_DATE, UPDATED_DATE, CREATED_BY, UPDATED_BY
+        ) VALUES (
+          ?, 'Grocery', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?, ?
+        )`,
+        [
+          retCode,
+          user.USERNAME || 'User',
+          phone,
+          user.ADDRESS || 'Not provided',
+          user.ZIP || 0,
+          user.EMAIL,
+          'default-photo.jpg',
+          'India',
+          user.PROVINCE || 'Not provided',
+          user.CITY || 'Not provided',
+          phone,
+          phone
+        ]
+      );
+
+      console.log(`Retailer profile created for user: ${phone}`);
+    }
+
     res.json({
       success: true,
       message: 'Account verified successfully please login',
     });
   } catch (error) {
-    console.error('Login error:', error);
+    console.error('Verify OTP error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error in login',
+      message: 'Error in verifying OTP',
       error: error.message
     });
   }
@@ -390,11 +443,240 @@ const changePassword = async (req, res) => {
   }
 };
 
+// New improved password reset APIs
+const requestPasswordReset = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required'
+      });
+    }
+
+    // Check if user exists with this phone number and meets the criteria
+    const [existingUser] = await db.promise().query(
+      'SELECT * FROM user_info WHERE MOBILE = ? AND ISACTIVE = ? AND is_otp_verify = ?',
+      [phone, 'Y', 1]
+    );
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active verified user found with this phone number'
+      });
+    }
+
+    // Send OTP for password reset
+    let dataCode;
+    try {
+      dataCode = await sendVerificationOTP(phone);
+      console.log('OTP sent for password reset:', dataCode);
+      
+      if (dataCode == false) {
+        return res.status(500).json({
+          success: false,
+          message: 'Please wait 60 seconds before trying again.',
+          error: "Please wait 60 seconds before trying again."
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: 'Password reset OTP sent successfully',
+        verificationId: dataCode?.data?.verificationId || null
+      });
+    } catch (err) {
+      console.log('Error sending OTP:', err.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Please wait 60 seconds before trying again.',
+        error: "Please wait 60 seconds before trying again."
+      });
+    }
+  } catch (error) {
+    console.error('Request password reset error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error in requesting password reset',
+      error: error.message
+    });
+  }
+};
+
+const confirmOtpForPassword = async (req, res) => {
+  try {
+    const { phone, verification_code, otp } = req.body;
+
+    if (!phone || !verification_code || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number, verification code, and OTP are required'
+      });
+    }
+
+    // Check if user exists with this phone number and meets the criteria
+    const [existingUser] = await db.promise().query(
+      'SELECT * FROM user_info WHERE MOBILE = ? AND ISACTIVE = ? AND is_otp_verify = ?',
+      [phone, 'Y', 1]
+    );
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active verified user found with this phone number'
+      });
+    }
+
+    // Validate OTP
+    const isOTPValid = await validateOTP(phone, verification_code, otp);
+    if (!isOTPValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired OTP'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP verified successfully. You can now reset your password.'
+    });
+  } catch (error) {
+    console.error('Confirm OTP for password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error in verifying OTP for password reset',
+      error: error.message
+    });
+  }
+};
+
+const resetPasswordWithPhone = async (req, res) => {
+  try {
+    const { phone, password } = req.body;
+
+    if (!phone || !password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number and new password are required'
+      });
+    }
+
+    // Validate password strength (optional)
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 6 characters long'
+      });
+    }
+
+    // Check if user exists with this phone number
+    const [existingUser] = await db.promise().query(
+      'SELECT * FROM user_info WHERE MOBILE = ?',
+      [phone]
+    );
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No user found with this phone number'
+      });
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // Update the password in database
+    await db.promise().query(
+      'UPDATE user_info SET PASSWORD = ? WHERE MOBILE = ?',
+      [hashedPassword, phone]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully'
+    });
+  } catch (error) {
+    console.error('Reset password with phone error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error in resetting password',
+      error: error.message
+    });
+  }
+};
+
+const resendOtp = async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required'
+      });
+    }
+
+    // Optional: Check if user exists with this phone number
+    const [existingUser] = await db.promise().query(
+      'SELECT * FROM user_info WHERE MOBILE = ?',
+      [phone]
+    );
+
+    if (existingUser.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No user found with this phone number'
+      });
+    }
+
+    // Send OTP
+    let dataCode;
+    try {
+      dataCode = await sendVerificationOTP(phone);
+      console.log('Resend OTP response:', dataCode);
+      
+      if (dataCode == false) {
+        return res.status(500).json({
+          success: false,
+          message: 'Please wait 60 seconds before trying again.',
+          error: "Please wait 60 seconds before trying again."
+        });
+      }
+      
+      res.json({
+        success: true,
+        message: 'OTP resent successfully',
+        verificationId: dataCode?.data?.verificationId || null
+      });
+    } catch (err) {
+      console.log('Error resending OTP:', err.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Please wait 60 seconds before trying again.',
+        error: "Please wait 60 seconds before trying again."
+      });
+    }
+  } catch (error) {
+    console.error('Resend OTP error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error in resending OTP',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   signup,
   login,
   verifyOtp,
   resetPassword,
   verifyOtpPassword,
-  changePassword
+  changePassword,
+  requestPasswordReset,
+  confirmOtpForPassword,
+  resetPasswordWithPhone,
+  resendOtp
 }; 

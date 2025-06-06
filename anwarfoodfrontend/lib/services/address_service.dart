@@ -4,7 +4,7 @@ import '../models/address_model.dart';
 import 'auth_service.dart';
 
 class AddressService {
-  static const String baseUrl = 'https://anwarfood.onrender.com';
+  static const String baseUrl = 'http://localhost:3000';
   final AuthService _authService = AuthService();
 
   Future<List<Address>> getAddresses() async {
@@ -15,7 +15,7 @@ class AddressService {
       }
 
       final response = await http.get(
-        Uri.parse('https://anwarfood.onrender.com/api/address/list'),
+        Uri.parse('http://localhost:3000/api/address/list'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -52,7 +52,7 @@ class AddressService {
       }
 
       final response = await http.post(
-        Uri.parse('https://anwarfood.onrender.com/api/address/add'),
+        Uri.parse('http://localhost:3000/api/address/add'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -98,7 +98,7 @@ class AddressService {
       }
 
       final response = await http.put(
-        Uri.parse('https://anwarfood.onrender.com/api/address/edit/$addressId'),
+        Uri.parse('http://localhost:3000/api/address/edit/$addressId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -130,7 +130,7 @@ class AddressService {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('https://anwarfood.onrender.com/api/address/default'),
+      Uri.parse('http://localhost:3000/api/address/default'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',

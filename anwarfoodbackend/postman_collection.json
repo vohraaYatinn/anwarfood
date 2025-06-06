@@ -22,7 +22,7 @@
               "raw": "{\n    \"username\": \"testuser\",\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\",\n    \"mobile\": 1234567890,\n    \"city\": \"Test City\",\n    \"province\": \"Test Province\",\n    \"zip\": \"123456\",\n    \"address\": \"Test Address\"\n}"
             },
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/auth/signup",
+              "raw": "http://localhost:3000/api/auth/signup",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -45,7 +45,7 @@
               "raw": "{\n    \"email\": \"test@example.com\",\n    \"password\": \"password123\"\n}"
             },
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/auth/login",
+              "raw": "http://localhost:3000/api/auth/login",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -69,7 +69,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/products/list",
+              "raw": "http://localhost:3000/api/products/list",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -88,7 +88,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/products/details/1",
+              "raw": "http://localhost:3000/api/products/details/1",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -107,7 +107,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/products/category/1",
+              "raw": "http://localhost:3000/api/products/category/1",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -126,7 +126,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/products/units/183",
+              "raw": "http://localhost:3000/api/products/units/183",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -150,7 +150,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/categories/list",
+              "raw": "http://localhost:3000/api/categories/list",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -182,7 +182,7 @@
               "raw": "{\n    \"productId\": 1,\n    \"quantity\": 2,\n    \"unitId\": 1\n}"
             },
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/cart/add",
+              "raw": "http://localhost:3000/api/cart/add",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -201,7 +201,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/cart/fetch",
+              "raw": "http://localhost:3000/api/cart/fetch",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -228,7 +228,7 @@
               "raw": "{\n    \"addressId\": 1,\n    \"paymentMethod\": \"cod\",\n    \"notes\": \"Please deliver carefully\"\n}"
             },
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/cart/place-order",
+              "raw": "http://localhost:3000/api/cart/place-order",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -252,7 +252,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/orders/list",
+              "raw": "http://localhost:3000/api/orders/list",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -271,7 +271,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/orders/details/1",
+              "raw": "http://localhost:3000/api/orders/details/1",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -379,7 +379,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/retailers/list",
+              "raw": "http://localhost:3000/api/retailers/list",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",
@@ -399,7 +399,7 @@
               }
             ],
             "url": {
-              "raw": "https://anwarfood.onrender.com/api/retailers/info/:retailerId",
+              "raw": "http://localhost:3000/api/retailers/info/:retailerId",
               "protocol": "http",
               "host": ["localhost"],
               "port": "3000",

@@ -31,14 +31,24 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (response['success'] == true) {
-        // Store the token and user data
-        // TODO: Implement secure token storage
+        // Token and user data are automatically stored by auth service
         Navigator.pushReplacementNamed(context, '/home');
       } else {
         // Check if the response indicates verification is needed
-        if (response['message']?.toString().toLowerCase() == 'verify' && 
+        if ((response['message']?.toString().toLowerCase() == 'verify' ||
+             response['message']?.toString() == 'You need to verify your account') && 
             response['verificationId'] != null) {
-          // Navigate to OTP page with verification details
+          // Show the verification message to user
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(response['message'] ?? 'You need to verify your account'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 3),
+            ),
+          );
+          
+          // Navigate to OTP page with verification details after a short delay
+          await Future.delayed(Duration(seconds: 1));
           Navigator.pushNamed(
             context,
             '/otp-verify',

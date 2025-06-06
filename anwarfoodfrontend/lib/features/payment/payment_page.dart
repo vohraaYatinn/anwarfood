@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
+import '../../services/settings_service.dart';
 import '../order/order_success_page.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'dart:typed_data';
 
 class PaymentPage extends StatefulWidget {
   const PaymentPage({Key? key}) : super(key: key);
@@ -13,22 +18,100 @@ class PaymentPage extends StatefulWidget {
 
 class _PaymentPageState extends State<PaymentPage> {
   final AuthService _authService = AuthService();
+  final SettingsService _settingsService = SettingsService();
+  final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
+  bool _isBankDetailsLoading = true;
+  Map<String, dynamic>? _bankDetails;
+  String? _error;
+  dynamic _paymentScreenshot; // File for mobile, XFile for web
+  bool _showImageUpload = false;
+  Uint8List? _webImage; // For web platform
 
-  Future<void> _placeOrder() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadBankDetails();
+  }
+
+  Future<void> _loadBankDetails() async {
+    try {
+      final details = await _settingsService.getBankDetails();
+      setState(() {
+        _bankDetails = details;
+        _isBankDetailsLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isBankDetailsLoading = false;
+      });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        if (kIsWeb) {
+          // Handle web platform
+          final bytes = await image.readAsBytes();
+          setState(() {
+            _webImage = bytes;
+            _paymentScreenshot = image;
+          });
+        } else {
+          // Handle mobile platforms
+          setState(() {
+            _paymentScreenshot = File(image.path);
+          });
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showUploadDialog() {
+    setState(() {
+      _showImageUpload = true;
+    });
+  }
+
+  Future<void> _placeOrder({required bool isPaidOnline}) async {
     setState(() {
       _isLoading = true;
     });
     try {
       final token = await _authService.getToken();
-      if (token == null) throw Exception('No authentication token found');
+      final user = await _authService.getUser();
       
+      if (token == null) throw Exception('No authentication token found');
+      if (user == null) throw Exception('User not found');
+      if (user.role.toLowerCase() != 'customer') throw Exception('Only customers can place orders');
+      
+      if (isPaidOnline && _paymentScreenshot == null) {
+        throw Exception('Please upload payment screenshot');
+      }
+
       final response = await http.post(
-        Uri.parse('https://anwarfood.onrender.com/api/cart/place-order'),
+        Uri.parse('http://localhost:3000/api/cart/place-order'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
         },
+        body: jsonEncode({
+          'paid_online': isPaidOnline,
+          'authentication': token,
+          'user_id': user.id,
+          'paymentMethod': isPaidOnline ? 'online' : 'cod',
+          // Add payment screenshot handling here when backend is ready
+        }),
       );
 
       final data = jsonDecode(response.body);
@@ -62,18 +145,119 @@ class _PaymentPageState extends State<PaymentPage> {
     }
   }
 
+  Widget _buildImagePreview() {
+    if (_paymentScreenshot == null) return const SizedBox.shrink();
+
+    if (kIsWeb) {
+      if (_webImage != null) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.memory(
+            _webImage!,
+            height: 200,
+            width: double.infinity,
+            fit: BoxFit.cover,
+          ),
+        );
+      }
+    } else {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.file(
+          _paymentScreenshot as File,
+          height: 200,
+          width: double.infinity,
+          fit: BoxFit.cover,
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildImageUploadSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Upload Payment Screenshot',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_paymentScreenshot != null) ...[
+            _buildImagePreview(),
+            const SizedBox(height: 16),
+          ],
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _paymentScreenshot == null ? const Color(0xFF9B1B1B) : Colors.grey,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _pickImage,
+              child: Text(
+                _paymentScreenshot == null ? 'Select Screenshot' : 'Change Screenshot',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+          if (_paymentScreenshot != null) ...[
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9B1B1B),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                onPressed: _isLoading ? null : () => _placeOrder(isPaidOnline: true),
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Text(
+                        'Confirm Order',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final upiList = [
-      {'icon': 'assets/images/google.png', 'id': 'Loremipsum@okicici'},
-      {'icon': 'assets/images/google.png', 'id': 'Payment@okicici'},
-      {'icon': 'assets/images/google.png', 'id': '799131480@paytm'},
-    ];
-    final cards = [
-      {'icon': 'assets/images/visa.png', 'name': 'Axis Card', 'number': '**** 1380', 'isPreferred': true},
-      {'icon': 'assets/images/visa.png', 'name': 'Slice Card', 'number': '**** 6222', 'isPreferred': false},
-      {'icon': 'assets/images/visa.png', 'name': 'Jane', 'number': '**** 1172', 'isPreferred': false},
-    ];
     return Scaffold(
       backgroundColor: const Color(0xFFF8F6F9),
       appBar: AppBar(
@@ -105,272 +289,189 @@ class _PaymentPageState extends State<PaymentPage> {
                   Text('3 items. Total: ₹284', style: TextStyle(color: Colors.grey, fontSize: 14)),
                 ],
               ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Payment Method',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    InkWell(
-                      onTap: _isLoading ? null : _placeOrder,
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF9B1B1B).withOpacity(0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.delivery_dining,
-                                color: Color(0xFF9B1B1B),
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Pay on Delivery',
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Pay when you receive your order',
-                                    style: TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (_isLoading)
-                              const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            else
-                              const Icon(
-                                Icons.arrow_forward_ios,
-                                size: 16,
-                                color: Colors.grey,
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
               const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF3E0),
-                  borderRadius: BorderRadius.circular(14),
+              if (!_showImageUpload) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Payment Method',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      InkWell(
+                        onTap: _isLoading ? null : () => _placeOrder(isPaidOnline: false),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: Colors.grey.shade300),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.delivery_dining,
+                                  color: Color(0xFF9B1B1B),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              const Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Pay on Delivery',
+                                      style: TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      'Pay when you receive your order',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_isLoading)
+                                const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              else
+                                const Icon(
+                                  Icons.arrow_forward_ios,
+                                  size: 16,
+                                  color: Colors.grey,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.account_balance_wallet, color: Color(0xFFFFA726), size: 32),
-                    const SizedBox(width: 12),
-                    Expanded(
+                const SizedBox(height: 24),
+                if (_isBankDetailsLoading)
+                  const Center(child: CircularProgressIndicator())
+                else if (_error != null)
+                  Center(
+                    child: Column(
+                      children: [
+                        Text(_error!, style: const TextStyle(color: Colors.red)),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: _loadBankDetails,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  )
+                else if (_bankDetails != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Bank Details',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        _buildDetailRow('Bank Name', _bankDetails!['bank_name']),
+                        _buildDetailRow('Branch', _bankDetails!['branch']),
+                        _buildDetailRow('Account Number', _bankDetails!['account_number']),
+                        _buildDetailRow('IFSC Code', _bankDetails!['ifsc_code']),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  if (_bankDetails!['upi_image_url'] != null) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: const [
-                          Text('Introducing Swiggy Money', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFA726))),
-                          SizedBox(height: 2),
-                          Text('Avail single click payments, instant refunds and cashbacks!\nActivate Swiggy Money by providing a Govt. ID number.', style: TextStyle(color: Colors.black, fontSize: 13)),
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text(
+                            'Scan QR Code to Pay',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Image.network(
+                            _bankDetails!['upi_image_url'],
+                            height: 200,
+                            width: 200,
+                            fit: BoxFit.contain,
+                          ),
                         ],
                       ),
                     ),
+                    const SizedBox(height: 24),
                   ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text('Preferred Payment', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black12,
-                      blurRadius: 8,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Image.asset('assets/images/visa.png', width: 32, height: 20),
-                        const SizedBox(width: 10),
-                        const Text('Axis Card', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const Spacer(),
-                        const Text('•••• 1380', style: TextStyle(color: Colors.grey)),
-                        const SizedBox(width: 8),
-                        const Icon(Icons.check_circle, color: Colors.green),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        OutlinedButton(
-                          onPressed: () {},
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.grey),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                          ),
-                          child: const Text('CVV'),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 50,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF9B1B1B),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: SizedBox(
-                            height: 44,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1DBF73),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                              ),
-                              onPressed: () {},
-                              child: const Text('PAY ₹ 284', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                            ),
-                          ),
+                      ),
+                      onPressed: _isLoading ? null : _showUploadDialog,
+                      child: const Text(
+                        'Confirm Online Payment',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
                         ),
-                      ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text('UPI', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  children: [
-                    ...upiList.map((upi) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6.0),
-                          child: Row(
-                            children: [
-                              Image.asset(upi['icon'] as String, width: 28, height: 28),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(upi['id'] as String, style: const TextStyle(fontWeight: FontWeight.w500)),
-                              ),
-                              const Icon(Icons.radio_button_off, color: Colors.grey),
-                            ],
-                          ),
-                        )),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: const [
-                        Icon(Icons.add_circle_outline, color: Color(0xFFFFA726)),
-                        SizedBox(width: 8),
-                        Text('Add New UPI ID', style: TextStyle(color: Color(0xFFFFA726), fontWeight: FontWeight.bold)),
-                        SizedBox(width: 8),
-                        Text('You need to have a registered UPI ID', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text('Credit & Debit cards', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  children: [
-                    ...cards.skip(1).map((card) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 6.0),
-                          child: Row(
-                            children: [
-                              Image.asset(card['icon'] as String, width: 32, height: 20),
-                              const SizedBox(width: 10),
-                              Text(card['name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
-                              const Spacer(),
-                              Text(card['number'] as String, style: const TextStyle(color: Colors.grey)),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.radio_button_off, color: Colors.grey),
-                            ],
-                          ),
-                        )),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: const [
-                        Icon(Icons.add_circle_outline, color: Color(0xFFFFA726)),
-                        SizedBox(width: 8),
-                        Text('Add New Card', style: TextStyle(color: Color(0xFFFFA726), fontWeight: FontWeight.bold)),
-                        SizedBox(width: 8),
-                        Text('Save and Pay via Cards.', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 18),
-              const Text('More Payment Options', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Column(
-                  children: [
-                    _morePaymentOption(Icons.account_balance_wallet_outlined, 'Wallets', 'Paytm, PhonePe, Amazon Pay & more'),
-                    _morePaymentOption(Icons.restaurant, 'Sodexo', 'Sodexo card valid only on Restaurants & In...'),
-                    _morePaymentOption(Icons.account_balance, 'Netbanking', 'Select from a list of banks'),
-                    _morePaymentOption(Icons.money, 'Pay on Delivery', 'Pay in cash or pay online.'),
-                  ],
-                ),
-              ),
+                  ),
+                ],
+              ] else ...[
+                _buildImageUploadSection(),
+              ],
               const SizedBox(height: 24),
             ],
           ),
@@ -379,14 +480,33 @@ class _PaymentPageState extends State<PaymentPage> {
     );
   }
 
-  Widget _morePaymentOption(IconData icon, String title, String subtitle) {
-    return ListTile(
-      leading: Icon(icon, color: Colors.grey[700]),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-      contentPadding: const EdgeInsets.symmetric(vertical: 2, horizontal: 0),
-      onTap: () {},
+  Widget _buildDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 } 

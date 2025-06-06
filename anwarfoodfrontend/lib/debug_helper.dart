@@ -16,7 +16,7 @@ class DebugHelper {
     print('Category Service Base URL: ${CategoryService.baseUrl}');
     print('Cart Service Base URL: ${CartService.baseUrl}');
     print('Address Service Base URL: ${AddressService.baseUrl}');
-    print('Order Service: Uses hardcoded https://anwarfood.onrender.com');
+    print('Order Service: Uses hardcoded http://localhost:3000');
     print('================================');
     
     // Print API configuration

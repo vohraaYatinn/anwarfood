@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../models/product_model.dart';
+import '../../models/user_model.dart';
 import '../../services/product_service.dart';
 import '../../services/cart_service.dart';
+import '../../services/auth_service.dart';
+import 'dart:async';
 
 class ProductDetailPage extends StatefulWidget {
   const ProductDetailPage({Key? key}) : super(key: key);
@@ -13,36 +16,83 @@ class ProductDetailPage extends StatefulWidget {
 class _ProductDetailPageState extends State<ProductDetailPage> {
   final ProductService _productService = ProductService();
   final CartService _cartService = CartService();
+  final AuthService _authService = AuthService();
   Product? _product;
+  User? _user;
   bool _isLoading = true;
   String? _error;
   int _quantity = 1;
   int? _selectedUnitId;
   bool _isAdding = false;
+  Map<String, dynamic>? _selectedUnit;
+  bool _isInitialized = false;
+  int _cartCount = 0;
+  Timer? _cartCountTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    print('Initial state - selectedUnitId: $_selectedUnitId, selectedUnit: $_selectedUnit');
+  }
+
+  @override
+  void dispose() {
+    _cartCountTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final productId = ModalRoute.of(context)!.settings.arguments as int;
-    _fetchProduct(productId);
+    if (!_isInitialized) {
+      final productId = ModalRoute.of(context)!.settings.arguments as int;
+      _fetchProductAndUser(productId);
+      _isInitialized = true;
+    }
   }
 
-  Future<void> _fetchProduct(int productId) async {
+  Future<void> _fetchProductAndUser(int productId) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      final product = await _productService.getProductDetails(productId);
+      final results = await Future.wait([
+        _productService.getProductDetails(productId),
+        _authService.getUser(),
+      ]);
+      
+      final product = results[0] as Product;
+      final user = results[1] as User?;
+      
+      if (!mounted) return;
+
       setState(() {
         _product = product;
-        // If units are available, select the first one by default
+        _user = user;
         if (product.units != null && product.units.isNotEmpty) {
-          _selectedUnitId = product.units[0]['PU_ID'] as int?;
+          final firstUnit = product.units[0];
+          _selectedUnitId = firstUnit['PU_ID'] is int 
+              ? firstUnit['PU_ID'] 
+              : int.parse(firstUnit['PU_ID'].toString());
+          _selectedUnit = firstUnit;
+          _quantity = int.parse(firstUnit['PU_PROD_UNIT_VALUE'].toString());
+          
+          print('Initial unit setup - ID: $_selectedUnitId, Unit: $_selectedUnit');
         }
         _isLoading = false;
       });
+
+      // Start fetching cart count after user is loaded and if they are a customer
+      if (user?.role.toLowerCase() == 'customer') {
+        await _fetchCartCount();
+        // Setup periodic cart count refresh
+        _cartCountTimer?.cancel(); // Cancel any existing timer
+        _cartCountTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchCartCount());
+      }
     } catch (e) {
+      print('Error fetching product: $e');
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _isLoading = false;
@@ -50,23 +100,81 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     }
   }
 
+  void _updateSelectedUnit(int? unitId) {
+    print('Updating unit: $unitId');
+    if (_product == null || unitId == null) return;
+    
+    try {
+      final newUnit = _product!.units.firstWhere(
+        (unit) => unit['PU_ID'] == unitId,
+      );
+
+      print('Found new unit: $newUnit');
+
+      if (!mounted) return;
+      
+      setState(() {
+        _selectedUnitId = unitId;
+        _selectedUnit = Map<String, dynamic>.from(newUnit); // Create a new map to ensure state update
+        _quantity = int.parse(newUnit['PU_PROD_UNIT_VALUE'].toString());
+      });
+    } catch (e) {
+      print('Error updating unit: $e');
+    }
+  }
+
+  void _incrementQuantity() {
+    if (_selectedUnit == null) return;
+    final unitValue = int.parse(_selectedUnit!['PU_PROD_UNIT_VALUE'].toString());
+    setState(() {
+      _quantity += unitValue;
+    });
+  }
+
+  void _decrementQuantity() {
+    if (_selectedUnit == null) return;
+    final unitValue = int.parse(_selectedUnit!['PU_PROD_UNIT_VALUE'].toString());
+    if (_quantity > unitValue) {
+      setState(() {
+        _quantity -= unitValue;
+      });
+    }
+  }
+
+  double _calculateTotalPrice() {
+    if (_selectedUnit == null) return 0.0;
+    final unitRate = double.parse(_selectedUnit!['PU_PROD_RATE'].toString());
+    final unitValue = int.parse(_selectedUnit!['PU_PROD_UNIT_VALUE'].toString());
+    return (_quantity / unitValue) * unitRate;
+  }
+
+  Future<void> _fetchCartCount() async {
+    if (_user?.role.toLowerCase() != 'customer') return;
+    
+    try {
+      final cartData = await _cartService.getCartCount();
+      if (mounted) {
+        setState(() {
+          _cartCount = cartData['totalItems'] ?? 0; // Using totalItems instead of totalQuantity
+        });
+      }
+    } catch (e) {
+      print('Error fetching cart count: $e');
+    }
+  }
+
   Future<void> _addToCart() async {
-    print('_addToCart function called');
-    print('Product: $_product');
-    print('Product: $_selectedUnitId');
     if (_product == null || _selectedUnitId == null) return;
     setState(() {
       _isAdding = true;
     });
     try {
-          print('_addToCart function called1');
-
       final result = await _cartService.addToCart(
         productId: _product!.id,
         quantity: _quantity,
         unitId: _selectedUnitId!,
       );
-      print('Add to cart response: $result');
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -74,6 +182,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
             backgroundColor: result['success'] == true ? Colors.green : Colors.red,
           ),
         );
+        // Refresh cart count immediately after adding item
+        await _fetchCartCount();
       }
     } catch (e) {
       print('Error adding to cart: $e');
@@ -92,6 +202,137 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         });
       }
     }
+  }
+
+  Future<void> _editProduct() async {
+    if (_product == null) return;
+    
+    final result = await Navigator.pushNamed(
+      context,
+      '/edit-product',
+      arguments: _product,
+    );
+    
+    // If the edit was successful, refresh the product data
+    if (result == true) {
+      final productId = ModalRoute.of(context)!.settings.arguments as int;
+      _fetchProductAndUser(productId);
+    }
+  }
+
+  Widget _buildActionButton() {
+    if (_user == null) {
+      return const SizedBox.shrink(); // No button if user data is not loaded
+    }
+
+    switch (_user!.role.toLowerCase()) {
+      case 'admin':
+        return SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF9B1B1B),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: _editProduct,
+            child: const Text(
+              'Edit Product',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        );
+      case 'customer':
+        return SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF9B1B1B),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: _isAdding ? null : _addToCart,
+            child: _isAdding
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text(
+                    'Add to Bag',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+          ),
+        );
+      case 'deliver':
+        return const SizedBox.shrink(); // No button for delivery users
+      default:
+        return const SizedBox.shrink(); // No button for unknown roles
+    }
+  }
+
+  Widget _buildUnitDropdown() {
+    if (_product == null || _product!.units.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Select Unit:', style: TextStyle(fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.grey.shade300),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: ButtonTheme(
+              alignedDropdown: true,
+              child: DropdownButton<int>(
+                value: _selectedUnitId,
+                isExpanded: true,
+                icon: const Icon(Icons.arrow_drop_down),
+                items: _product!.units.map<DropdownMenuItem<int>>((unit) {
+                  final id = unit['PU_ID'];
+                  if (id == null) return const DropdownMenuItem<int>(child: Text('Invalid Unit'));
+                  
+                  final unitId = id is int ? id : int.parse(id.toString());
+                  return DropdownMenuItem<int>(
+                    value: unitId,
+                    child: Text(
+                      '${unit['PU_PROD_UNIT_VALUE']} ${unit['PU_PROD_UNIT']} - Rs. ${unit['PU_PROD_RATE']} each',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  print('Dropdown value changed to: $value');
+                  if (value != null && value != _selectedUnitId) {
+                    _updateSelectedUnit(value);
+                  }
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -153,27 +394,25 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                Text(
-                                  'MRP. ${_product!.mrp}',
-                                  style: const TextStyle(
-                                    color: Colors.green,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
+                            if (_selectedUnit != null) ...[
+                              Text(
+                                'Rs. ${_selectedUnit!['PU_PROD_RATE']} per ${_selectedUnit!['PU_PROD_UNIT_VALUE']} ${_selectedUnit!['PU_PROD_UNIT']}',
+                                style: const TextStyle(
+                                  color: Color(0xFF9B1B1B),
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
                                 ),
-                                const SizedBox(width: 16),
-                                Text(
-                                  'SP. ${_product!.sp}',
-                                  style: const TextStyle(
-                                    color: Color(0xFF9B1B1B),
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                  ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Total: Rs. ${_calculateTotalPrice().toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  color: Colors.green,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 18,
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                             const SizedBox(height: 8),
                             Text(
                               _product!.desc,
@@ -183,89 +422,93 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                const Text('Quantity:', style: TextStyle(fontWeight: FontWeight.w500)),
-                                const SizedBox(width: 12),
-                                IconButton(
-                                  icon: const Icon(Icons.remove_circle_outline),
-                                  onPressed: _quantity > 1
-                                      ? () => setState(() => _quantity--)
-                                      : null,
-                                ),
-                                Text('$_quantity', style: const TextStyle(fontSize: 16)),
-                                IconButton(
-                                  icon: const Icon(Icons.add_circle_outline),
-                                  onPressed: () => setState(() => _quantity++),
-                                ),
-                              ],
-                            ),
-                            if (_product!.units != null && _product!.units.isNotEmpty) ...[
-                              const SizedBox(height: 8),
+                            if (_product!.units.isNotEmpty) ...[
+                              _buildUnitDropdown(),
+                              const SizedBox(height: 16),
                               Row(
                                 children: [
-                                  const Text('Unit:', style: TextStyle(fontWeight: FontWeight.w500)),
+                                  const Text('Quantity:', style: TextStyle(fontWeight: FontWeight.w500)),
                                   const SizedBox(width: 12),
-                                  DropdownButton<int>(
-                                    value: _selectedUnitId,
-                                    items: _product!.units.map<DropdownMenuItem<int>>((unit) {
-                                      return DropdownMenuItem<int>(
-                                        value: unit['PU_ID'] as int?,
-                                        child: Text('${unit['PU_PROD_UNIT_VALUE']} ${unit['PU_PROD_UNIT']}'),
-                                      );
-                                    }).toList(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedUnitId = value;
-                                      });
-                                    },
+                                  IconButton(
+                                    icon: const Icon(Icons.remove_circle_outline),
+                                    onPressed: _selectedUnit != null ? _decrementQuantity : null,
                                   ),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey.shade300),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      '$_quantity',
+                                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                                    ),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.add_circle_outline),
+                                    onPressed: _selectedUnit != null ? _incrementQuantity : null,
+                                  ),
+                                  if (_selectedUnit != null) ...[
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      _selectedUnit!['PU_PROD_UNIT'],
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        color: Colors.grey,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ],
                             const SizedBox(height: 24),
-                            SizedBox(
-                              width: double.infinity,
-                              height: 48,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF9B1B1B),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                onPressed: _isAdding ? null : _addToCart,
-                                child: _isAdding
-                                    ? const SizedBox(
-                                        width: 20,
-                                        height: 20,
-                                        child: CircularProgressIndicator(
-                                          color: Colors.white,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Add to Bag',
-                                        style: TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                              ),
-                            ),
+                            _buildActionButton(),
                             const SizedBox(height: 24),
                           ],
                         ),
                       ),
                     ),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF9B1B1B),
-        onPressed: () {
-          Navigator.pushNamed(context, '/cart');
-        },
-        child: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
-      ),
+      floatingActionButton: _user?.role.toLowerCase() == 'customer'
+          ? Stack(
+              children: [
+                FloatingActionButton(
+                  backgroundColor: const Color(0xFF9B1B1B),
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/cart').then((_) {
+                      // Refresh cart count when returning from cart page
+                      _fetchCartCount();
+                    });
+                  },
+                  child: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
+                ),
+                if (_cartCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      constraints: const BoxConstraints(
+                        minWidth: 20,
+                        minHeight: 20,
+                      ),
+                      child: Text(
+                        _cartCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            )
+          : null,
     );
   }
 } 

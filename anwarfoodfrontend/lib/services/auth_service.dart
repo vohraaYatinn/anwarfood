@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class AuthService {
-  static const String baseUrl = 'https://anwarfood.onrender.com';
+  static const String baseUrl = 'http://localhost:3000';
   static const String _userKey = 'user_data';
   static const String _tokenKey = 'auth_token';
   static const String _onboardingKey = 'onboarding_completed';
@@ -34,6 +34,86 @@ class AuthService {
       }
       
       return data;
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+      };
+    }
+  }
+
+  // Password Reset Methods
+  Future<Map<String, dynamic>> requestPasswordReset(String phone) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/request-password-reset'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+        }),
+      );
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> resendOtp(String phone) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/resend-otp'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+        }),
+      );
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> confirmOtpForPassword(String phone, String verificationCode, String otp) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/confirm-otp-for-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+          'verification_code': verificationCode,
+          'otp': otp,
+        }),
+      );
+
+      return jsonDecode(response.body);
+    } catch (e) {
+      return {
+        'success': false,
+        'message': 'Network error occurred',
+      };
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPasswordWithPhone(String phone, String password) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/auth/reset-password-with-phone'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'phone': phone,
+          'password': password,
+        }),
+      );
+
+      return jsonDecode(response.body);
     } catch (e) {
       return {
         'success': false,

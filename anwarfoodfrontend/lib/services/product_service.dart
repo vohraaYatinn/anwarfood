@@ -4,14 +4,33 @@ import '../models/product_model.dart';
 import 'auth_service.dart';
 
 class ProductService {
-  static const String baseUrl = 'https://anwarfood.onrender.com';
+  static const String baseUrl = 'http://localhost:3000';
   final AuthService _authService = AuthService();
 
   Future<List<Product>> getProductsByCategory(int categoryId) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('https://anwarfood.onrender.com/api/products/category/$categoryId'),
+      Uri.parse('http://localhost:3000/api/products/category/$categoryId'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+    final data = jsonDecode(response.body);
+    if (data['success'] == true && data['data'] != null) {
+      final List<dynamic> productsJson = data['data'];
+      return productsJson.map((json) => Product.fromJson(json)).toList();
+    } else {
+      throw Exception(data['message'] ?? 'Failed to load products');
+    }
+  }
+
+  Future<List<Product>> getProductsBySubCategory(int subCategoryId) async {
+    final token = await _authService.getToken();
+    if (token == null) throw Exception('No authentication token found');
+    final response = await http.get(
+      Uri.parse('$baseUrl/api/products/subcategory/$subCategoryId'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -30,7 +49,7 @@ class ProductService {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('https://anwarfood.onrender.com/api/products/details/$productId'),
+      Uri.parse('http://localhost:3000/api/products/details/$productId'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -44,12 +63,13 @@ class ProductService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> searchProducts(String query) async {
+  Future<List<Map<String, dynamic>>> searchProducts(String query, {int? subcategoryId}) async {
     try {
       final token = await _authService.getToken();
       if (token == null) throw Exception('No authentication token found');
+
       final response = await http.get(
-        Uri.parse('https://anwarfood.onrender.com/api/products/search?query=$query'),
+        Uri.parse('http://localhost:3000/api/products/search?query=$query'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -62,7 +82,49 @@ class ProductService {
         throw Exception(data['message'] ?? 'Failed to search products');
       }
     } catch (e) {
-      throw Exception('Error searching products: $e');
+      throw Exception('Failed to search products: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> updateProduct(int productId, Map<String, dynamic> productData) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/admin/edit-product/$productId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(productData),
+      );
+      
+      final data = jsonDecode(response.body);
+      return data;
+    } catch (e) {
+      throw Exception('Error updating product: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> addProduct(Map<String, dynamic> productData) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/add-product'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(productData),
+      );
+      
+      final data = jsonDecode(response.body);
+      return data;
+    } catch (e) {
+      throw Exception('Error adding product: $e');
     }
   }
 } 

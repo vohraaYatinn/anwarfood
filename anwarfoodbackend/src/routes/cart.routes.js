@@ -5,7 +5,8 @@ const {
   fetchCart, 
   placeOrder, 
   increaseQuantity, 
-  decreaseQuantity 
+  decreaseQuantity,
+  getCartItemCount
 } = require('../controllers/cart.controller');
 const authMiddleware = require('../middleware/auth.middleware');
 
@@ -14,5 +15,6 @@ router.get('/fetch', authMiddleware, fetchCart);
 router.post('/place-order', authMiddleware, placeOrder);
 router.post('/increase-quantity', authMiddleware, increaseQuantity);
 router.post('/decrease-quantity', authMiddleware, decreaseQuantity);
+router.get('/count', authMiddleware, getCartItemCount);
 
 module.exports = router; 

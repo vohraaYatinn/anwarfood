@@ -8,11 +8,15 @@ import 'features/auth/verify_reset_otp_page.dart';
 import 'features/auth/new_password_page.dart';
 import 'features/product/product_list_page.dart';
 import 'features/product/product_detail_page.dart';
+import 'features/product/edit_product_page.dart';
+import 'features/product/add_product_page.dart';
 import 'features/orders/orders_page.dart';
 import 'features/orders/order_details_page.dart';
+import 'features/orders/employee_orders_page.dart';
 import 'features/retailers/retailer_list_page.dart';
 import 'features/retailers/retailer_detail_page.dart';
 import 'features/retailers/self_retailer_detail_page.dart';
+import 'features/retailers/edit_retailer_page.dart';
 import 'features/home/home_page.dart';
 import 'features/cart/cart_page.dart';
 import 'features/payment/payment_page.dart';
@@ -21,6 +25,8 @@ import 'features/home/profile_page.dart';
 import 'features/profile/address_list_page.dart';
 import 'features/profile/add_address_page.dart';
 import 'features/notifications/notification_page.dart';
+import 'features/admin/manage_users_page.dart';
+import 'features/admin/category_management_page.dart';
 import 'startup_page.dart';
 import 'debug_helper.dart';
 import 'services/http_client.dart';
@@ -70,11 +76,15 @@ class ShoppursShopApp extends StatelessWidget {
         '/new-password': (context) => const NewPasswordPage(),
         '/product-list': (context) => ProductListPage(),
         '/product-detail': (context) => ProductDetailPage(),
+        '/edit-product': (context) => const EditProductPage(),
+        '/add-product': (context) => const AddProductPage(),
         '/orders': (context) => OrdersPage(),
         '/order-details': (context) => const OrderDetailsPage(),
+        '/employee-orders': (context) => const EmployeeOrdersPage(),
         '/retailers': (context) => RetailerListPage(),
         '/retailer-detail': (context) => RetailerDetailPage(),
         '/self-retailer-detail': (context) => const SelfRetailerDetailPage(),
+        '/edit-retailer': (context) => const EditRetailerPage(),
         '/home': (context) => HomePage(),
         '/cart': (context) => CartPage(),
         '/payment': (context) => PaymentPage(),
@@ -83,6 +93,9 @@ class ShoppursShopApp extends StatelessWidget {
         '/address-list': (context) => const AddressListPage(),
         '/add-address': (context) => const AddAddressPage(),
         '/notifications': (context) => const NotificationPage(),
+        '/manage-users': (context) => const ManageUsersPage(),
+        '/category-management': (context) => const CategoryManagementPage(),
+        '/retailer-list': (context) => const RetailerListPage(),
       },
     );
   }

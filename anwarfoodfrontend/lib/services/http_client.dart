@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 
 class HttpClient {
-  static const String baseUrl = 'https://anwarfood.onrender.com';
+  static const String baseUrl = 'http://localhost:3000';
   static const Duration timeoutDuration = Duration(seconds: 30);
 
   static http.Client _client = http.Client();

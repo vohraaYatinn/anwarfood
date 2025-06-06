@@ -14,29 +14,21 @@ const adminMiddleware = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
     
-    // Fetch user details from database to check role
+    // Check if user exists and has admin role
     const [users] = await db.promise().query(
-      'SELECT USER_ID, EMAIL, USER_TYPE, ISACTIVE FROM user_info WHERE USER_ID = ?',
+      'SELECT USER_ID, EMAIL, USERNAME, USER_TYPE FROM user_info WHERE USER_ID = ? AND ISACTIVE = "Y"',
       [decoded.userId]
     );
 
     if (users.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'User not found'
+        message: 'User not found or inactive'
       });
     }
 
     const user = users[0];
-
-    // Check if user is active
-    if (user.ISACTIVE !== 'Y') {
-      return res.status(401).json({
-        success: false,
-        message: 'User account is inactive'
-      });
-    }
-
+    
     // Check if user has admin role
     if (user.USER_TYPE !== 'admin') {
       return res.status(403).json({
@@ -48,7 +40,6 @@ const adminMiddleware = async (req, res, next) => {
     req.user = user;
     next();
   } catch (error) {
-    console.error('Admin middleware error:', error);
     return res.status(401).json({
       success: false,
       message: 'Invalid token'

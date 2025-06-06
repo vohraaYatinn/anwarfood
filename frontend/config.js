@@ -1,7 +1,7 @@
 // API Configuration
 const config = {
     // Base URL for all API endpoints
-    API_BASE_URL: 'https://anwarfood.onrender.com',  // Change this to your production URL when deploying
+    API_BASE_URL: 'http://localhost:3000',  // Change this to your production URL when deploying
     
     // API Endpoints
     API_ENDPOINTS: {

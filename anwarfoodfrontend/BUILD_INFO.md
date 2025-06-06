@@ -30,8 +30,8 @@
 
 ## 🌐 API Configuration
 
-- **Base URL:** https://anwarfood.onrender.com
-- **Health Check:** https://anwarfood.onrender.com/health
+- **Base URL:** http://localhost:3000
+- **Health Check:** http://localhost:3000/health
 - **Timeout:** 30 seconds
 - **CORS:** Configured for web development
 
@@ -66,15 +66,15 @@
 If you encounter issues:
 
 1. **Use Debug APK** for detailed error logs
-2. **Check internet connection** - visit https://anwarfood.onrender.com in browser
+2. **Check internet connection** - visit http://localhost:3000 in browser
 3. **Clear app data** if needed
 4. **Try different network** (WiFi vs mobile data)
 
 ## 📞 Support
 
-- **API Status:** https://anwarfood.onrender.com/health
+- **API Status:** http://localhost:3000/health
 - **Debug Logs:** Use `adb logcat | grep flutter` with debug APK
-- **Network Test:** Visit https://anwarfood.onrender.com in mobile browser
+- **Network Test:** Visit http://localhost:3000 in mobile browser
 
 ---
 

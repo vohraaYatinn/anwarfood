@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../models/category_model.dart';
+import '../../models/subcategory_model.dart';
 import '../../models/product_model.dart';
+import '../../models/user_model.dart';
 import '../../services/product_service.dart';
 import '../../services/category_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/cart_service.dart';
 import 'dart:async';
 
 class ProductListPage extends StatefulWidget {
@@ -14,8 +18,11 @@ class ProductListPage extends StatefulWidget {
 
 class _ProductListPageState extends State<ProductListPage> {
   Category? category;
+  SubCategory? selectedSubCategory;
   final ProductService _productService = ProductService();
   final CategoryService _categoryService = CategoryService();
+  final AuthService _authService = AuthService();
+  final CartService _cartService = CartService();
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
   List<Map<String, dynamic>> _searchResults = [];
@@ -24,11 +31,46 @@ class _ProductListPageState extends State<ProductListPage> {
   bool _showSearchDropdown = false;
   
   List<Product> _products = [];
-  List<Category> _categories = [];
+  List<SubCategory> _subCategories = [];
+  User? _user;
   bool _isLoading = true;
-  bool _isCategoryLoading = true;
+  bool _isSubCategoryLoading = true;
   String? _error;
-  String? _categoryError;
+  String? _subCategoryError;
+  Timer? _cartCountTimer;
+  int _cartCount = 0;
+  Map<int, bool> _isAddingToCart = {};
+  Map<int, int> _selectedQuantities = {};
+  Map<int, Map<String, dynamic>> _selectedUnits = {};
+
+  Future<void> _fetchAndSetFirstCategory() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final categories = await _categoryService.getCategories();
+      if (categories.isNotEmpty) {
+        setState(() {
+          category = categories.first;
+          _error = null;
+        });
+        _fetchSubCategories();
+      } else {
+        setState(() {
+          _error = 'No categories available';
+          _isLoading = false;
+          _isSubCategoryLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+        _isLoading = false;
+        _isSubCategoryLoading = false;
+      });
+    }
+  }
 
   @override
   void didChangeDependencies() {
@@ -36,13 +78,12 @@ class _ProductListPageState extends State<ProductListPage> {
     final args = ModalRoute.of(context)!.settings.arguments;
     if (args != null && args is Category) {
       category = args;
-      _fetchProducts();
-      _fetchCategories();
+      _fetchSubCategories();
     } else {
-      // No category passed, fetch categories first and use the first one
-      _fetchCategoriesAndSetDefault();
+      _fetchAndSetFirstCategory();
     }
     _searchController.addListener(_onSearchChanged);
+    _loadUserData();
   }
 
   @override
@@ -50,6 +91,7 @@ class _ProductListPageState extends State<ProductListPage> {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _debounce?.cancel();
+    _cartCountTimer?.cancel();
     super.dispose();
   }
 
@@ -103,48 +145,43 @@ class _ProductListPageState extends State<ProductListPage> {
     });
   }
 
-  Future<void> _fetchCategoriesAndSetDefault() async {
+  Future<void> _fetchSubCategories() async {
+    if (category == null) return;
+    
     setState(() {
-      _isCategoryLoading = true;
-      _isLoading = true;
-      _categoryError = null;
-      _error = null;
+      _isSubCategoryLoading = true;
+      _subCategoryError = null;
     });
     try {
-      final categories = await _categoryService.getCategories();
-      if (categories.isNotEmpty) {
-        setState(() {
-          _categories = categories.take(4).toList();
-          category = categories.first; // Set the first category as default
-          _isCategoryLoading = false;
-        });
-        // Now fetch products for the default category
-        _fetchProducts();
-      } else {
-        setState(() {
-          _categoryError = 'No categories found';
-          _isCategoryLoading = false;
+      final subCategories = await _categoryService.getSubCategoriesByCategoryId(category!.id);
+      setState(() {
+        _subCategories = subCategories;
+        _isSubCategoryLoading = false;
+        
+        // Automatically select the first subcategory if available
+        if (subCategories.isNotEmpty) {
+          selectedSubCategory = subCategories.first;
+          _fetchProducts(selectedSubCategory!.id);
+        } else {
           _isLoading = false;
-        });
-      }
+        }
+      });
     } catch (e) {
       setState(() {
-        _categoryError = e.toString();
-        _isCategoryLoading = false;
+        _subCategoryError = e.toString();
+        _isSubCategoryLoading = false;
         _isLoading = false;
       });
     }
   }
 
-  Future<void> _fetchProducts([int? categoryId]) async {
-    if (category == null && categoryId == null) return;
-    
+  Future<void> _fetchProducts(int subCategoryId) async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
     try {
-      final products = await _productService.getProductsByCategory(categoryId ?? category!.id);
+      final products = await _productService.getProductsBySubCategory(subCategoryId);
       setState(() {
         _products = products;
         _isLoading = false;
@@ -157,22 +194,224 @@ class _ProductListPageState extends State<ProductListPage> {
     }
   }
 
-  Future<void> _fetchCategories() async {
-    setState(() {
-      _isCategoryLoading = true;
-      _categoryError = null;
-    });
+  Future<void> _loadUserData() async {
     try {
-      final categories = await _categoryService.getCategories();
+      final user = await _authService.getUser();
       setState(() {
-        _categories = categories.take(4).toList();
-        _isCategoryLoading = false;
+        _user = user;
       });
+      
+      // Start fetching cart count if user is a customer
+      if (user?.role.toLowerCase() == 'customer') {
+        await _fetchCartCount();
+        // Setup periodic cart count refresh
+        _cartCountTimer?.cancel();
+        _cartCountTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchCartCount());
+      }
     } catch (e) {
-      setState(() {
-        _categoryError = e.toString();
-        _isCategoryLoading = false;
-      });
+      // Handle error silently
+    }
+  }
+
+  Future<void> _fetchCartCount() async {
+    if (_user?.role.toLowerCase() != 'customer') return;
+    
+    try {
+      final cartData = await _cartService.getCartCount();
+      if (mounted) {
+        setState(() {
+          _cartCount = cartData['totalItems'] ?? 0;
+        });
+      }
+    } catch (e) {
+      print('Error fetching cart count: $e');
+    }
+  }
+
+  void _showAddToCartDialog(Product product) {
+    int quantity = _selectedQuantities[product.id] ?? int.parse(product.units[0]['PU_PROD_UNIT_VALUE'].toString());
+    Map<String, dynamic> selectedUnit = _selectedUnits[product.id] ?? product.units[0];
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(product.name),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Unit Selection
+                  const Text('Select Unit:', style: TextStyle(fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<Map<String, dynamic>>(
+                        value: selectedUnit,
+                        isExpanded: true,
+                        items: product.units.map<DropdownMenuItem<Map<String, dynamic>>>((unit) {
+                          return DropdownMenuItem<Map<String, dynamic>>(
+                            value: unit,
+                            child: Text(
+                              '${unit['PU_PROD_UNIT_VALUE']} ${unit['PU_PROD_UNIT']} - Rs. ${unit['PU_PROD_RATE']} each',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              selectedUnit = value;
+                              quantity = int.parse(value['PU_PROD_UNIT_VALUE'].toString());
+                            });
+                          }
+                        },
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Quantity Selection
+                  Row(
+                    children: [
+                      const Text('Quantity:', style: TextStyle(fontWeight: FontWeight.w500)),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline),
+                        onPressed: () {
+                          final unitValue = int.parse(selectedUnit['PU_PROD_UNIT_VALUE'].toString());
+                          if (quantity > unitValue) {
+                            setState(() {
+                              quantity -= unitValue;
+                            });
+                          }
+                        },
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade300),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          quantity.toString(),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: () {
+                          final unitValue = int.parse(selectedUnit['PU_PROD_UNIT_VALUE'].toString());
+                          setState(() {
+                            quantity += unitValue;
+                          });
+                        },
+                      ),
+                      Text(
+                        selectedUnit['PU_PROD_UNIT'],
+                        style: const TextStyle(fontSize: 14, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // Show total price
+                  Text(
+                    'Total: Rs. ${_calculateTotalPrice(quantity, selectedUnit)}',
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF9B1B1B),
+                  ),
+                  child: const Text(
+                    'Add to Cart',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    _addToCart(
+                      product,
+                      quantity,
+                      selectedUnit['PU_ID'] is int 
+                          ? selectedUnit['PU_ID'] 
+                          : int.parse(selectedUnit['PU_ID'].toString()),
+                    );
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((_) {
+      // Save the selected values for this product
+      _selectedQuantities[product.id] = quantity;
+      _selectedUnits[product.id] = selectedUnit;
+    });
+  }
+
+  double _calculateTotalPrice(int quantity, Map<String, dynamic> unit) {
+    final unitRate = double.parse(unit['PU_PROD_RATE'].toString());
+    final unitValue = int.parse(unit['PU_PROD_UNIT_VALUE'].toString());
+    return (quantity / unitValue) * unitRate;
+  }
+
+  Future<void> _addToCart(Product product, int quantity, int unitId) async {
+    if (_isAddingToCart[product.id] == true) return;
+
+    setState(() {
+      _isAddingToCart[product.id] = true;
+    });
+
+    try {
+      final result = await _cartService.addToCart(
+        productId: product.id,
+        quantity: quantity,
+        unitId: unitId,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Added to cart'),
+            backgroundColor: result['success'] == true ? Colors.green : Colors.red,
+          ),
+        );
+        await _fetchCartCount();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to add to cart: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAddingToCart[product.id] = false;
+        });
+      }
     }
   }
 
@@ -228,49 +467,86 @@ class _ProductListPageState extends State<ProductListPage> {
               ],
             ),
           ),
+          const SizedBox(height: 16),
           SizedBox(
-            height: 90,
-            child: _isCategoryLoading
+            height: 100,
+            child: _isSubCategoryLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _categoryError != null
-                    ? Center(child: Text(_categoryError!, style: const TextStyle(color: Colors.red)))
-                    : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        scrollDirection: Axis.horizontal,
-                        itemCount: _categories.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 16),
-                        itemBuilder: (context, index) {
-                          final cat = _categories[index];
-                          return InkWell(
-                            borderRadius: BorderRadius.circular(16),
-                            onTap: () {
-                              _fetchProducts(cat.id);
-                            },
-                            child: Column(
-                              children: [
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Image.network(
-                                    cat.imageUrl,
-                                    width: 60,
-                                    height: 60,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) =>
-                                        const Icon(Icons.image_not_supported, size: 38, color: Colors.grey),
+                : _subCategoryError != null
+                    ? Center(child: Text(_subCategoryError!, style: const TextStyle(color: Colors.red)))
+                    : _subCategories.isEmpty
+                        ? const Center(child: Text('No subcategories found'))
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            scrollDirection: Axis.horizontal,
+                            itemCount: _subCategories.length,
+                            separatorBuilder: (_, __) => const SizedBox(width: 16),
+                            itemBuilder: (context, index) {
+                              final subCat = _subCategories[index];
+                              final isSelected = selectedSubCategory?.id == subCat.id;
+                              return InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () {
+                                  setState(() {
+                                    selectedSubCategory = subCat;
+                                  });
+                                  _fetchProducts(subCat.id);
+                                },
+                                child: Container(
+                                  width: 80,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16),
+                                    border: isSelected 
+                                      ? Border.all(color: const Color(0xFF9B1B1B), width: 2)
+                                      : Border.all(color: Colors.transparent, width: 2),
+                                  ),
+                                  padding: const EdgeInsets.all(4),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Container(
+                                        width: 60,
+                                        height: 60,
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          borderRadius: BorderRadius.circular(16),
+                                          border: Border.all(
+                                            color: isSelected ? const Color(0xFF9B1B1B) : Colors.grey.shade200,
+                                            width: 1,
+                                          ),
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(12),
+                                          child: Image.network(
+                                            subCat.imageUrl,
+                                            width: 52,
+                                            height: 52,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) =>
+                                                const Icon(Icons.image_not_supported, size: 38, color: Colors.grey),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        subCat.name,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 12,
+                                          color: isSelected ? const Color(0xFF9B1B1B) : Colors.black,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  cat.name,
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                              );
+                            },
+                          ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -294,7 +570,10 @@ class _ProductListPageState extends State<ProductListPage> {
                                       context,
                                       '/product-detail',
                                       arguments: prod.id,
-                                    );
+                                    ).then((_) {
+                                      // Refresh cart count when returning from detail page
+                                      _fetchCartCount();
+                                    });
                                   },
                                   child: Row(
                                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,21 +629,6 @@ class _ProductListPageState extends State<ProductListPage> {
                                               ],
                                             ),
                                           ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      SizedBox(
-                                        height: 36,
-                                        child: ElevatedButton.icon(
-                                          style: ElevatedButton.styleFrom(
-                                            backgroundColor: const Color(0xFF9B1B1B),
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                          ),
-                                          onPressed: () {},
-                                          icon: const Icon(Icons.shopping_bag_outlined, size: 18, color: Colors.white),
-                                          label: const Text('Add', style: TextStyle(color: Colors.white)),
                                         ),
                                       ),
                                     ],
@@ -450,6 +714,69 @@ class _ProductListPageState extends State<ProductListPage> {
             ),
         ],
       ),
+      floatingActionButton: _user?.role.toLowerCase() == 'customer'
+        ? Stack(
+            children: [
+              FloatingActionButton(
+                backgroundColor: const Color(0xFF9B1B1B),
+                onPressed: () {
+                  Navigator.pushNamed(context, '/cart').then((_) {
+                    // Refresh cart count when returning from cart page
+                    _fetchCartCount();
+                  });
+                },
+                child: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
+              ),
+              if (_cartCount > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 20,
+                      minHeight: 20,
+                    ),
+                    child: Text(
+                      _cartCount.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          )
+        : _user?.role.toLowerCase() == 'admin'
+            ? FloatingActionButton(
+                backgroundColor: const Color(0xFF9B1B1B),
+                onPressed: () {
+                  Navigator.pushNamed(
+                    context,
+                    '/add-product',
+                    arguments: {
+                      'categoryId': category?.id,
+                      'categoryName': category?.name,
+                      'subCategoryId': selectedSubCategory?.id,
+                      'subCategoryName': selectedSubCategory?.name,
+                    },
+                  ).then((result) {
+                    // Refresh products if a new product was added
+                    if (result == true && selectedSubCategory != null) {
+                      _fetchProducts(selectedSubCategory!.id);
+                    }
+                  });
+                },
+                child: const Icon(Icons.add, color: Colors.white),
+              )
+            : null,
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF9B1B1B),

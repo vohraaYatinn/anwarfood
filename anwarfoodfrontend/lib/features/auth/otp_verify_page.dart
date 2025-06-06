@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
+import '../../services/auth_service.dart';
 
 class OtpVerifyPage extends StatefulWidget {
   const OtpVerifyPage({Key? key}) : super(key: key);
@@ -17,6 +19,12 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
   List<FocusNode> otpFocusNodes = List.generate(4, (index) => FocusNode());
   bool _isLoading = false;
   String? _errorMessage;
+  
+  // Timer related variables
+  Timer? _timer;
+  int _remainingSeconds = 120;
+  bool _canResend = false;
+  final _authService = AuthService();
 
   @override
   void didChangeDependencies() {
@@ -27,6 +35,91 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
       verificationId = arguments['verificationId'];
       userId = arguments['userId'];
       phoneNumber = arguments['phoneNumber'];
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _canResend = false;
+    _remainingSeconds = 120;
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_remainingSeconds > 0) {
+        setState(() {
+          _remainingSeconds--;
+        });
+      } else {
+        setState(() {
+          _canResend = true;
+        });
+        timer.cancel();
+      }
+    });
+  }
+
+  String _formatTime(int seconds) {
+    int minutes = seconds ~/ 60;
+    int remainingSeconds = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _handleResendOtp() async {
+    if (phoneNumber == null) {
+      setState(() {
+        _errorMessage = 'Phone number not found';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await _authService.resendOtp(phoneNumber!);
+
+      if (response['success'] == true) {
+        // Update verification ID with new one
+        setState(() {
+          verificationId = response['verificationId'];
+        });
+
+        // Clear all OTP input fields
+        for (var controller in otpControllers) {
+          controller.clear();
+        }
+
+        // Focus on first OTP field
+        otpFocusNodes[0].requestFocus();
+
+        // Restart timer
+        _startTimer();
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OTP resent successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        setState(() {
+          _errorMessage = response['message'] ?? 'Failed to resend OTP';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'An error occurred while resending OTP';
+      });
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -55,7 +148,7 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://anwarfood.onrender.com/api/auth/verify-otp'),
+        Uri.parse('http://localhost:3000/api/auth/verify-otp'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -99,6 +192,7 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
 
   @override
   void dispose() {
+    _timer?.cancel();
     for (var controller in otpControllers) {
       controller.dispose();
     }
@@ -185,6 +279,14 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
                       } else if (value.isEmpty && index > 0) {
                         otpFocusNodes[index - 1].requestFocus();
                       }
+                      
+                      // Auto verify when all digits are entered
+                      if (index == 3 && value.isNotEmpty) {
+                        final otp = otpControllers.map((controller) => controller.text).join();
+                        if (otp.length == 4) {
+                          _verifyOtp();
+                        }
+                      }
                     },
                   ),
                 )),
@@ -211,23 +313,41 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
                 ),
               const SizedBox(height: 8),
               Row(
-                children: const [
+                children: [
                   Text(
-                    "Didn't get the OTP? ",
-                    style: TextStyle(
+                    _canResend ? "Didn't get the OTP? " : "Resend OTP in ",
+                    style: const TextStyle(
                       color: Colors.grey,
                       fontSize: 14,
                     ),
                   ),
-                  Text(
-                    'Resend',
-                    style: TextStyle(
-                      color: Color(0xFF9B1B1B),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      decoration: TextDecoration.underline,
+                  if (_canResend)
+                    TextButton(
+                      onPressed: _handleResendOtp,
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Resend',
+                        style: TextStyle(
+                          color: Color(0xFF9B1B1B),
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    )
+                  else
+                    Text(
+                      _formatTime(_remainingSeconds),
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
                     ),
-                  ),
                 ],
               ),
               const SizedBox(height: 32),

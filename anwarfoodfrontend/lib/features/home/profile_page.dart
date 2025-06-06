@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../models/user_model.dart';
+import '../help/help_support_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -126,20 +127,34 @@ class _ProfilePageState extends State<ProfilePage> {
                   child: ListView(
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     children: [
-                      _ProfileOption(
-                        icon: Icons.shopping_cart_outlined,
-                        label: 'My Orders',
-                        onTap: () => Navigator.pushNamed(context, '/orders'),
-                      ),
-                      _ProfileOption(
-                        icon: Icons.location_on_outlined,
-                        label: 'My Addresses',
-                        onTap: () => Navigator.pushNamed(context, '/address-list'),
-                      ),
+                      if (_user?.role.toLowerCase() == 'customer') ...[
+                        _ProfileOption(
+                          icon: Icons.shopping_cart_outlined,
+                          label: 'My Orders',
+                          onTap: () => Navigator.pushNamed(context, '/orders'),
+                        ),
+                        _ProfileOption(
+                          icon: Icons.location_on_outlined,
+                          label: 'My Addresses',
+                          onTap: () => Navigator.pushNamed(context, '/address-list'),
+                        ),
+                      ],
+                      if (_user?.role.toLowerCase() == 'admin') ...[
+                        _ProfileOption(
+                          icon: Icons.people_outline,
+                          label: 'Manage Employee Orders',
+                          onTap: () => Navigator.pushNamed(context, '/employee-orders'),
+                        ),
+                      ],
                       _ProfileOption(
                         icon: Icons.help_outline,
                         label: 'Help & Support',
-                        onTap: () {},
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const HelpSupportPage(),
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 8),
                       const Divider(),

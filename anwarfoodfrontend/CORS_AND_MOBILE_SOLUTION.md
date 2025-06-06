@@ -4,7 +4,7 @@
 
 ### Problem:
 ```
-Access to fetch at 'https://anwarfood.onrender.com/api/auth/login' from origin 'http://localhost:65109' has been blocked by CORS policy
+Access to fetch at 'http://localhost:3000/api/auth/login' from origin 'http://localhost:65109' has been blocked by CORS policy
 ```
 
 ### ✅ Solution Applied:
@@ -19,7 +19,7 @@ Access to fetch at 'https://anwarfood.onrender.com/api/auth/login' from origin '
        'http://127.0.0.1:3000',
        'http://127.0.0.1:65109',
        'http://127.0.0.1:8080',
-       'https://anwarfood.onrender.com',
+       'http://localhost:3000',
      ],
      credentials: true,
      optionsSuccessStatus: 200,
@@ -91,7 +91,7 @@ Access to fetch at 'https://anwarfood.onrender.com/api/auth/login' from origin '
 #### If App Shows "No Internet Connection":
 
 1. **Check Device Internet:**
-   - Open browser and visit https://anwarfood.onrender.com
+   - Open browser and visit http://localhost:3000
    - Should show: `{"success":true,"message":"Welcome to AnwarFood API","version":"1.0.0"}`
 
 2. **Clear App Data:**
@@ -108,7 +108,7 @@ Access to fetch at 'https://anwarfood.onrender.com/api/auth/login' from origin '
 #### If App Shows "Cannot Connect to AnwarFood Servers":
 
 1. **Check Server Status:**
-   - Visit https://anwarfood.onrender.com/health
+   - Visit http://localhost:3000/health
    - Should return server status
 
 2. **Check Firewall/VPN:**
@@ -139,8 +139,8 @@ Access to fetch at 'https://anwarfood.onrender.com/api/auth/login' from origin '
 ### Startup Logs (Mobile):
 ```
 === SERVICE URL VERIFICATION ===
-API Config Base URL: https://anwarfood.onrender.com
-HTTP Client Base URL: https://anwarfood.onrender.com
+API Config Base URL: http://localhost:3000
+HTTP Client Base URL: http://localhost:3000
 ...
 === CONNECTIVITY CHECK ===
 Internet Connection: ✅ Available
@@ -183,8 +183,8 @@ Startup Connectivity Status: Connected successfully
 4. **App Crashes:** Use debug APK, check logs with `adb logcat`
 
 ### Contact Information:
-- Check server status: https://anwarfood.onrender.com/health
-- API documentation: https://anwarfood.onrender.com/
+- Check server status: http://localhost:3000/health
+- API documentation: http://localhost:3000/
 - Debug logs: Use debug APK with `adb logcat | grep flutter`
 
 ---

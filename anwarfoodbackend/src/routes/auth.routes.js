@@ -6,7 +6,11 @@ const {
   verifyOtp, 
   resetPassword, 
   verifyOtpPassword, 
-  changePassword 
+  changePassword,
+  requestPasswordReset,
+  confirmOtpForPassword,
+  resetPasswordWithPhone,
+  resendOtp
 } = require('../controllers/auth.controller');
 
 router.post('/signup', signup);
@@ -15,5 +19,13 @@ router.post('/verify-otp', verifyOtp);
 router.post('/reset-password', resetPassword);
 router.post('/verify-otp-password', verifyOtpPassword);
 router.post('/change-password', changePassword);
+
+// New improved password reset APIs
+router.post('/request-password-reset', requestPasswordReset);
+router.post('/confirm-otp-for-password', confirmOtpForPassword);
+router.post('/reset-password-with-phone', resetPasswordWithPhone);
+
+// Resend OTP API
+router.post('/resend-otp', resendOtp);
 
 module.exports = router; 
