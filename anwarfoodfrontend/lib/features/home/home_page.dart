@@ -8,6 +8,7 @@ import '../../models/address_model.dart';
 import '../../services/product_service.dart';
 import '../../services/cart_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/retailer_service.dart';
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
@@ -16,6 +17,11 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../services/brand_service.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import '../../services/advertising_service.dart';
+import 'package:mobile_scanner/mobile_scanner.dart' hide Address;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+import '../../config/api_config.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -33,6 +39,7 @@ class _HomePageState extends State<HomePage> {
   final BrandService _brandService = BrandService();
   final AdvertisingService _advertisingService = AdvertisingService();
   final SettingsService _settingsService = SettingsService();
+  final RetailerService _retailerService = RetailerService();
   final TextEditingController _searchController = TextEditingController();
   final PageController _pageController = PageController();
   Timer? _debounce;
@@ -61,6 +68,7 @@ class _HomePageState extends State<HomePage> {
   bool _isLoadingLocation = false;
   String? _locationError;
   String _appName = 'SHOPPURS APP'; // Default name until loaded
+  String? _selectedRetailerPhone;
 
   @override
   void initState() {
@@ -90,17 +98,19 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _onSearchChanged() {
-    if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400), () {
-      final query = _searchController.text.trim();
-      if (query.isNotEmpty) {
-        _searchProducts(query);
-      } else {
-        setState(() {
-          _searchResults = [];
-          _showSearchDropdown = false;
-        });
-      }
+    final query = _searchController.text.trim();
+    _debounce?.cancel();
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _showSearchDropdown = false;
+      });
+      return;
+    }
+    
+    // Increased debounce time to reduce API calls
+    _debounce = Timer(const Duration(milliseconds: 800), () {
+      _searchProducts(query);
     });
   }
 
@@ -186,20 +196,38 @@ class _HomePageState extends State<HomePage> {
         _user = user;
       });
       
-      // Start fetching cart count if user is a customer
-      if (user?.role.toLowerCase() == 'customer') {
+      // Load retailer phone for employees
+      if (user?.role.toLowerCase() == 'employee') {
+        _loadSelectedRetailerPhone();
+      }
+      
+      // Start fetching cart count if user is a customer or employee
+      if (user?.role.toLowerCase() == 'customer' || user?.role.toLowerCase() == 'employee') {
         await _fetchCartCount();
-        // Setup periodic cart count refresh
+        // Setup periodic cart count refresh - increased interval to reduce API calls
         _cartCountTimer?.cancel();
-        _cartCountTimer = Timer.periodic(const Duration(seconds: 30), (_) => _fetchCartCount());
+        _cartCountTimer = Timer.periodic(const Duration(minutes: 2), (_) => _fetchCartCount());
       }
     } catch (e) {
       // Handle error silently
     }
   }
 
+  Future<void> _loadSelectedRetailerPhone() async {
+    try {
+      final phone = await _retailerService.getSelectedRetailerPhone();
+      if (mounted) {
+        setState(() {
+          _selectedRetailerPhone = phone;
+        });
+      }
+    } catch (e) {
+      print('Error loading retailer phone: $e');
+    }
+  }
+
   Future<void> _fetchCartCount() async {
-    if (_user?.role.toLowerCase() != 'customer') return;
+    if (_user?.role.toLowerCase() != 'customer' && _user?.role.toLowerCase() != 'employee') return;
     
     try {
       final cartData = await _cartService.getCartCount();
@@ -520,13 +548,14 @@ class _HomePageState extends State<HomePage> {
 
   void _startAutoPlay() {
     _autoPlayTimer?.cancel();
-    _autoPlayTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
-      if (_advertising.isNotEmpty) {
+    // Increased interval to reduce performance impact
+    _autoPlayTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      if (_advertising.isNotEmpty && mounted) {
         final nextPage = (_currentAdIndex + 1) % _advertising.length;
         _pageController.animateToPage(
           nextPage,
-          duration: const Duration(milliseconds: 800),
-          curve: Curves.fastOutSlowIn,
+          duration: const Duration(milliseconds: 600),
+          curve: Curves.easeInOut,
         );
       }
     });
@@ -610,6 +639,88 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Future<void> _openBarcodeScanner() async {
+    // Check camera permission
+    final status = await Permission.camera.status;
+    if (!status.isGranted) {
+      final result = await Permission.camera.request();
+      if (!result.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Camera permission is required for barcode scanning'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Navigate to barcode scanner
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BarcodeScannerPage(
+          onBarcodeScanned: _getProductByBarcode,
+          title: 'Scan Product Barcode',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getProductByBarcode(String barcode) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      // Get product by barcode
+      final response = await http.post(
+        Uri.parse(ApiConfig.productsGetByBarcode),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'PRDB_BARCODE': barcode,
+        }),
+      );
+
+      final data = jsonDecode(response.body);
+      
+      if (data['success'] == true) {
+        // Navigate to product detail page
+        Navigator.pushNamed(
+          context,
+          '/product-detail',
+          arguments: data['data']['productId'],
+        );
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['message'] ?? 'Product found successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(data['message'] ?? 'Product not found'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: ${e.toString()}'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final brands = [
@@ -658,7 +769,7 @@ class _HomePageState extends State<HomePage> {
                 Navigator.pushNamed(context, '/notifications');
               },
             ),
-            if (_user?.role.toLowerCase() == 'customer')
+            if (_user?.role.toLowerCase() == 'customer' || _user?.role.toLowerCase() == 'employee')
               Stack(
                 children: [
                   IconButton(
@@ -709,6 +820,7 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
+                  _buildRetailerBanner(),
                   Row(
                     children: [
                       Expanded(
@@ -735,7 +847,7 @@ class _HomePageState extends State<HomePage> {
                         ),
                         child: IconButton(
                           icon: const Icon(Icons.camera_alt_outlined),
-                          onPressed: () {},
+                          onPressed: _openBarcodeScanner,
                         ),
                       ),
                     ],
@@ -1042,7 +1154,7 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      floatingActionButton: _user?.role.toLowerCase() == 'customer'
+      floatingActionButton: (_user?.role.toLowerCase() == 'customer' || _user?.role.toLowerCase() == 'employee')
         ? Stack(
             children: [
               FloatingActionButton(
@@ -1242,6 +1354,356 @@ class _HomePageState extends State<HomePage> {
           TextSpan(text: text.substring(end)),
         ],
       ),
+    );
+  }
+
+  Widget _buildRetailerBanner() {
+    if (_user?.role.toLowerCase() != 'employee' || _selectedRetailerPhone == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF9B1B1B).withOpacity(0.1),
+            const Color(0xFF9B1B1B).withOpacity(0.05),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF9B1B1B).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF9B1B1B),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.store,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ordering for Retailer',
+                  style: TextStyle(
+                    color: Color(0xFF9B1B1B),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Phone: $_selectedRetailerPhone',
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.pushNamed(context, '/retailer-selection').then((result) {
+                if (result == true) {
+                  _loadSelectedRetailerPhone();
+                }
+              });
+            },
+            icon: const Icon(
+              Icons.edit,
+              color: Color(0xFF9B1B1B),
+              size: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BarcodeScannerPage extends StatefulWidget {
+  final Future<void> Function(String) onBarcodeScanned;
+  final String title;
+  
+  const BarcodeScannerPage({
+    Key? key,
+    required this.onBarcodeScanned,
+    this.title = 'Scan Barcode',
+  }) : super(key: key);
+
+  @override
+  _BarcodeScannerPageState createState() => _BarcodeScannerPageState();
+}
+
+class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
+  MobileScannerController cameraController = MobileScannerController();
+  bool isProcessing = false;
+
+  @override
+  void dispose() {
+    cameraController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.torchState,
+              builder: (context, state, child) {
+                switch (state) {
+                  case TorchState.off:
+                    return const Icon(Icons.flash_off, color: Colors.white);
+                  case TorchState.on:
+                    return const Icon(Icons.flash_on, color: Colors.yellow);
+                }
+              },
+            ),
+            onPressed: () => cameraController.toggleTorch(),
+          ),
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.cameraFacingState,
+              builder: (context, state, child) {
+                return const Icon(Icons.camera_front, color: Colors.white);
+              },
+            ),
+            onPressed: () => cameraController.switchCamera(),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: cameraController,
+            onDetect: (capture) async {
+              if (!isProcessing) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty) {
+                  final barcode = barcodes.first;
+                  if (barcode.rawValue != null) {
+                    setState(() {
+                      isProcessing = true;
+                    });
+                    
+                    // Call the callback function
+                    await widget.onBarcodeScanned(barcode.rawValue!);
+                    
+                    // Close the scanner after processing
+                    Navigator.pop(context);
+                  }
+                }
+              }
+            },
+          ),
+          // Overlay with scanning area
+          Container(
+            decoration: ShapeDecoration(
+              shape: ScannerOverlayShape(
+                borderColor: const Color(0xFF9B1B1B),
+                borderRadius: 10,
+                borderLength: 30,
+                borderWidth: 4,
+                cutOutSize: 250,
+              ),
+            ),
+          ),
+          // Instructions
+          Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                isProcessing 
+                    ? 'Processing...' 
+                    : 'Place the barcode inside the frame to scan',
+                style: TextStyle(
+                  color: isProcessing ? Colors.yellow : Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ScannerOverlayShape extends ShapeBorder {
+  const ScannerOverlayShape({
+    this.borderColor = Colors.red,
+    this.borderWidth = 3.0,
+    this.overlayColor = const Color.fromRGBO(0, 0, 0, 80),
+    this.borderRadius = 0,
+    this.borderLength = 40,
+    double? cutOutSize,
+    double? cutOutWidth,
+    double? cutOutHeight,
+  })  : cutOutWidth = cutOutWidth ?? cutOutSize ?? 250,
+        cutOutHeight = cutOutHeight ?? cutOutSize ?? 250;
+
+  final Color borderColor;
+  final double borderWidth;
+  final Color overlayColor;
+  final double borderRadius;
+  final double borderLength;
+  final double cutOutWidth;
+  final double cutOutHeight;
+
+  @override
+  EdgeInsetsGeometry get dimensions => const EdgeInsets.all(10);
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) {
+    return Path()
+      ..fillType = PathFillType.evenOdd
+      ..addPath(getOuterPath(rect), Offset.zero);
+  }
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
+    Path getLeftTopPath(Rect rect) {
+      return Path()
+        ..moveTo(rect.left, rect.bottom)
+        ..lineTo(rect.left, rect.top + borderRadius)
+        ..quadraticBezierTo(rect.left, rect.top, rect.left + borderRadius, rect.top)
+        ..lineTo(rect.right, rect.top);
+    }
+
+    return getLeftTopPath(rect)
+      ..lineTo(rect.right, rect.bottom)
+      ..lineTo(rect.left, rect.bottom)
+      ..lineTo(rect.left, rect.top);
+  }
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    final width = rect.width;
+    final borderWidthSize = width / 2;
+    final height = rect.height;
+    final borderHeightSize = height / 2;
+    final cutOutWidth =
+        this.cutOutWidth < width ? this.cutOutWidth : width - borderWidth;
+    final cutOutHeight =
+        this.cutOutHeight < height ? this.cutOutHeight : height - borderWidth;
+
+    final backgroundPaint = Paint()
+      ..color = overlayColor
+      ..style = PaintingStyle.fill;
+
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth;
+
+    final cutOutRect = Rect.fromLTWH(
+      rect.left + (width - cutOutWidth) / 2 + borderWidth,
+      rect.top + (height - cutOutHeight) / 2 + borderWidth,
+      cutOutWidth - borderWidth * 2,
+      cutOutHeight - borderWidth * 2,
+    );
+
+    canvas
+      ..drawPath(
+          Path.combine(
+            PathOperation.difference,
+            Path()..addRect(rect),
+            Path()
+              ..addRRect(RRect.fromRectAndRadius(
+                  cutOutRect, Radius.circular(borderRadius)))
+              ..close(),
+          ),
+          backgroundPaint)
+      ..drawRRect(
+          RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)),
+          borderPaint);
+
+    // Draw corner borders
+    final cornerPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth;
+
+    // Top left corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.left - borderWidth, cutOutRect.top)
+          ..lineTo(cutOutRect.left - borderWidth, cutOutRect.top - borderLength)
+          ..moveTo(cutOutRect.left, cutOutRect.top - borderWidth)
+          ..lineTo(cutOutRect.left + borderLength, cutOutRect.top - borderWidth),
+        cornerPaint);
+
+    // Top right corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.right + borderWidth, cutOutRect.top)
+          ..lineTo(cutOutRect.right + borderWidth, cutOutRect.top - borderLength)
+          ..moveTo(cutOutRect.right, cutOutRect.top - borderWidth)
+          ..lineTo(cutOutRect.right - borderLength, cutOutRect.top - borderWidth),
+        cornerPaint);
+
+    // Bottom left corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.left - borderWidth, cutOutRect.bottom)
+          ..lineTo(cutOutRect.left - borderWidth, cutOutRect.bottom + borderLength)
+          ..moveTo(cutOutRect.left, cutOutRect.bottom + borderWidth)
+          ..lineTo(cutOutRect.left + borderLength, cutOutRect.bottom + borderWidth),
+        cornerPaint);
+
+    // Bottom right corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.right + borderWidth, cutOutRect.bottom)
+          ..lineTo(cutOutRect.right + borderWidth, cutOutRect.bottom + borderLength)
+          ..moveTo(cutOutRect.right, cutOutRect.bottom + borderWidth)
+          ..lineTo(cutOutRect.right - borderLength, cutOutRect.bottom + borderWidth),
+        cornerPaint);
+  }
+
+  @override
+  ShapeBorder scale(double t) {
+    return ScannerOverlayShape(
+      borderColor: borderColor,
+      borderWidth: borderWidth,
+      overlayColor: overlayColor,
     );
   }
 } 

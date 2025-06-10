@@ -1,9 +1,11 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'auth_service.dart';
+import '../config/api_config.dart';
 
 class OrderService {
   final AuthService _authService = AuthService();
+  final String baseUrl = ApiConfig.baseUrl;
 
   Future<Map<String, dynamic>> getOrders() async {
     try {
@@ -11,7 +13,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/orders/list'),
+        Uri.parse('$baseUrl/api/orders/list'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -35,7 +37,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/orders/details/$orderId'),
+        Uri.parse('$baseUrl/api/orders/details/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -59,7 +61,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/admin/get-order-details/$orderId'),
+        Uri.parse('$baseUrl/api/admin/get-order-details/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -83,7 +85,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.put(
-        Uri.parse('http://localhost:3000/api/admin/edit-order-status/$orderId'),
+        Uri.parse('$baseUrl/api/admin/edit-order-status/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -111,7 +113,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.put(
-        Uri.parse('http://localhost:3000/api/orders/cancel/$orderId'),
+        Uri.parse('$baseUrl/api/orders/cancel/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -135,7 +137,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/orders/search?query=$query'),
+        Uri.parse('$baseUrl/api/orders/search?query=$query'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -159,7 +161,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/admin/fetch-all-orders?status=$status'),
+        Uri.parse('$baseUrl/api/admin/fetch-all-orders?status=$status'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -183,7 +185,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/admin/search-orders?query=$query'),
+        Uri.parse('$baseUrl/api/admin/search-orders?query=$query'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -207,7 +209,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/employee/orders?status=confirmed'),
+        Uri.parse('$baseUrl/api/employee/orders?status=confirmed'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -231,7 +233,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/employee/orders/search?query=$query'),
+        Uri.parse('$baseUrl/api/employee/orders/search?query=$query'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -255,7 +257,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/employee/orders/$orderId'),
+        Uri.parse('$baseUrl/api/employee/orders/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -279,7 +281,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.put(
-        Uri.parse('http://localhost:3000/api/employee/orders/$orderId/status'),
+        Uri.parse('$baseUrl/api/employee/update-order-status/$orderId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

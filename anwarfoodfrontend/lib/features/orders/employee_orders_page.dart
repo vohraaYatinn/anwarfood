@@ -72,7 +72,7 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/admin/employees'),
+        Uri.parse('http://192.168.29.96:3000/api/admin/employees'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -108,7 +108,7 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/admin/employee-orders/$userId'),
+        Uri.parse('http://192.168.29.96:3000/api/admin/employee-orders/$userId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

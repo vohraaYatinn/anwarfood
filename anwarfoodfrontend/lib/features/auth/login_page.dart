@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -31,24 +32,23 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (response['success'] == true) {
-        // Token and user data are automatically stored by auth service
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        // Check if the response indicates verification is needed
-        if ((response['message']?.toString().toLowerCase() == 'verify' ||
-             response['message']?.toString() == 'You need to verify your account') && 
-            response['verificationId'] != null) {
-          // Show the verification message to user
+        // If login is successful, navigate to home
+        if (response['token'] != null) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+        // Check if verification is needed
+        else if (response['verificationId'] != null) {
+          // Show verification message
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(response['message'] ?? 'You need to verify your account'),
+            const SnackBar(
+              content: Text('Please verify your account'),
               backgroundColor: Colors.orange,
               duration: Duration(seconds: 3),
             ),
           );
           
-          // Navigate to OTP page with verification details after a short delay
-          await Future.delayed(Duration(seconds: 1));
+          // Navigate to OTP verification
+          await Future.delayed(const Duration(seconds: 1));
           Navigator.pushNamed(
             context,
             '/otp-verify',
@@ -58,15 +58,17 @@ class _LoginPageState extends State<LoginPage> {
               'phoneNumber': _phoneController.text,
             },
           );
-        } else {
-          setState(() {
-            _errorMessage = response['message'];
-          });
         }
+      } else {
+        setState(() {
+          _errorMessage = response['message'] ?? 'Login failed';
+        });
       }
     } catch (e) {
       setState(() {
-        _errorMessage = 'An error occurred. Please try again.';
+        _errorMessage = e.toString().contains('Exception:') 
+            ? e.toString().split('Exception: ')[1]
+            : 'An error occurred. Please try again.';
       });
     } finally {
       setState(() {

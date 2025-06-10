@@ -83,8 +83,8 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
         _isLoading = false;
       });
 
-      // Start fetching cart count after user is loaded and if they are a customer
-      if (user?.role.toLowerCase() == 'customer') {
+      // Start fetching cart count after user is loaded and if they are a customer or employee
+      if (user?.role.toLowerCase() == 'customer' || user?.role.toLowerCase() == 'employee') {
         await _fetchCartCount();
         // Setup periodic cart count refresh
         _cartCountTimer?.cancel(); // Cancel any existing timer
@@ -149,7 +149,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 
   Future<void> _fetchCartCount() async {
-    if (_user?.role.toLowerCase() != 'customer') return;
+    if (_user?.role.toLowerCase() != 'customer' && _user?.role.toLowerCase() != 'employee') return;
     
     try {
       final cartData = await _cartService.getCartCount();
@@ -249,6 +249,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
         );
       case 'customer':
+      case 'employee':
         return SizedBox(
           width: double.infinity,
           height: 48,
@@ -468,7 +469,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                         ),
                       ),
                     ),
-      floatingActionButton: _user?.role.toLowerCase() == 'customer'
+      floatingActionButton: (_user?.role.toLowerCase() == 'customer' || _user?.role.toLowerCase() == 'employee')
           ? Stack(
               children: [
                 FloatingActionButton(

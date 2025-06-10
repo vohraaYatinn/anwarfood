@@ -314,11 +314,71 @@ const searchProducts = async (req, res) => {
   }
 };
 
+const getProductIdByBarcode = async (req, res) => {
+  try {
+    const { PRDB_BARCODE } = req.body;
+
+    // Validate input
+    if (!PRDB_BARCODE) {
+      return res.status(400).json({
+        success: false,
+        message: 'Barcode is required'
+      });
+    }
+
+    // Find product using barcode
+    const [barcodeResults] = await db.promise().query(
+      'SELECT PRDB_PROD_ID FROM product_barcodes WHERE PRDB_BARCODE = ? AND SOLD_STATUS = "A"',
+      [PRDB_BARCODE]
+    );
+
+    if (barcodeResults.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found with this barcode or barcode is not active'
+      });
+    }
+
+    const productId = barcodeResults[0].PRDB_PROD_ID;
+
+    // Verify product exists and is not deleted
+    const [products] = await db.promise().query(
+      'SELECT PROD_ID, PROD_NAME FROM product WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
+      [productId]
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found or deleted'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Product found successfully',
+      data: {
+        barcode: PRDB_BARCODE,
+        productId: productId,
+        productName: products[0].PROD_NAME
+      }
+    });
+  } catch (error) {
+    console.error('Get product ID by barcode error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error finding product by barcode',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getProductList,
   getProductDetails,
   getProductsUnderCategory,
   getProductsUnderSubCategory,
   getProductUnits,
-  searchProducts
+  searchProducts,
+  getProductIdByBarcode
 }; 

@@ -1,21 +1,18 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/product_model.dart';
+import '../config/api_config.dart';
 import 'auth_service.dart';
 
 class ProductService {
-  static const String baseUrl = 'http://localhost:3000';
   final AuthService _authService = AuthService();
 
   Future<List<Product>> getProductsByCategory(int categoryId) async {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('http://localhost:3000/api/products/category/$categoryId'),
-      headers: {
-        'Authorization': 'Bearer $token',
-        'Content-Type': 'application/json',
-      },
+      Uri.parse(ApiConfig.productsByCategory(categoryId)),
+      headers: ApiConfig.defaultHeaders,
     );
     final data = jsonDecode(response.body);
     if (data['success'] == true && data['data'] != null) {
@@ -30,7 +27,7 @@ class ProductService {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('$baseUrl/api/products/subcategory/$subCategoryId'),
+      Uri.parse('http://192.168.29.96:3000/api/products/subcategory/$subCategoryId'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -49,7 +46,7 @@ class ProductService {
     final token = await _authService.getToken();
     if (token == null) throw Exception('No authentication token found');
     final response = await http.get(
-      Uri.parse('http://localhost:3000/api/products/details/$productId'),
+      Uri.parse('http://192.168.29.96:3000/api/products/details/$productId'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -69,7 +66,7 @@ class ProductService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://localhost:3000/api/products/search?query=$query'),
+        Uri.parse('http://192.168.29.96:3000/api/products/search?query=$query'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -92,7 +89,7 @@ class ProductService {
       if (token == null) throw Exception('No authentication token found');
       
       final response = await http.put(
-        Uri.parse('$baseUrl/api/admin/edit-product/$productId'),
+        Uri.parse('http://192.168.29.96:3000/api/admin/edit-product/$productId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -113,7 +110,7 @@ class ProductService {
       if (token == null) throw Exception('No authentication token found');
       
       final response = await http.post(
-        Uri.parse('$baseUrl/api/admin/add-product'),
+        Uri.parse('http://192.168.29.96:3000/api/admin/add-product'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

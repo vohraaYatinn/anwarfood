@@ -17,7 +17,22 @@ const app = express();
 
 // CORS configuration for development and production
 const corsOptions = {
-  origin: [
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Allow localhost and 127.0.0.1 on any port
+    if (origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)) {
+      return callback(null, true);
+    }
+    
+    // Allow any IP address on local network (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    if (origin.match(/^https?:\/\/(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?$/)) {
+      return callback(null, true);
+    }
+    
+    // Fallback for specific origins
+    const allowedOrigins = [
     'http://localhost:3000',
     'http://localhost:65109',
     'http://localhost:65100',
@@ -27,9 +42,14 @@ const corsOptions = {
     'http://127.0.0.1:65100',
     'http://127.0.0.1:65111',
     'http://127.0.0.1:8080',
-    'http://localhost:3000',
-    // Add any other origins you need for development
-  ],
+    ];
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -40,6 +60,9 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files for uploaded images
+app.use('/uploads', express.static('uploads'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -83,6 +106,10 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+const HOST = '0.0.0.0'; // This allows access from all network interfaces
+
+app.listen(PORT, HOST, () => {
+  console.log(`Server is running on ${HOST}:${PORT}`);
+  console.log(`Local access: http://localhost:${PORT}`);
+  console.log(`Network access: http://[YOUR_IP_ADDRESS]:${PORT}`);
 }); 

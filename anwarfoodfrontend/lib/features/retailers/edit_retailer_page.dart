@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
 import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
+import 'package:http_parser/http_parser.dart' as http_parser;
 
 class EditRetailerPage extends StatefulWidget {
   const EditRetailerPage({Key? key}) : super(key: key);
@@ -13,6 +17,7 @@ class EditRetailerPage extends StatefulWidget {
 class _EditRetailerPageState extends State<EditRetailerPage> {
   final _formKey = GlobalKey<FormState>();
   final AuthService _authService = AuthService();
+  final ImagePicker _picker = ImagePicker();
   bool isLoading = false;
 
   // Form controllers
@@ -27,6 +32,10 @@ class _EditRetailerPageState extends State<EditRetailerPage> {
   String? _selectedState;
   String? _selectedCity;
   String _shopOpenStatus = 'Y';
+  
+  // Profile photo variables
+  File? _selectedImage;
+  String? _currentPhotoUrl;
 
   // List of states and cities
   final List<String> _states = [
@@ -98,6 +107,11 @@ class _EditRetailerPageState extends State<EditRetailerPage> {
       }
       
       _shopOpenStatus = data['SHOP_OPEN_STATUS'] ?? 'Y';
+      
+      // Set current photo URL
+      if (data['RET_PHOTO'] != null && data['RET_PHOTO'].toString().isNotEmpty) {
+        _currentPhotoUrl = ApiConfig.retailerPhoto(data['RET_PHOTO']);
+      }
     });
   }
 
@@ -110,27 +124,76 @@ class _EditRetailerPageState extends State<EditRetailerPage> {
       final token = await _authService.getToken();
       if (token == null) throw Exception('No authentication token found');
 
-      final response = await http.put(
-        Uri.parse('http://localhost:3000/api/retailers/my-retailer'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'RET_NAME': _retailerNameController.text,
-          'RET_SHOP_NAME': _shopNameController.text,
-          'RET_ADDRESS': _addressController.text,
-          'RET_PIN_CODE': int.parse(_pinCodeController.text),
-          'RET_EMAIL_ID': _emailController.text,
-          'RET_COUNTRY': _selectedCountry,
-          'RET_STATE': _selectedState,
-          'RET_CITY': _selectedCity,
-          'RET_GST_NO': _gstController.text,
-          'SHOP_OPEN_STATUS': _shopOpenStatus,
-        }),
+      // Create multipart request
+      var request = http.MultipartRequest(
+        'PUT',
+        Uri.parse(ApiConfig.retailersMyRetailer),
       );
 
+      // Add headers
+      request.headers.addAll({
+        'Authorization': 'Bearer $token',
+      });
+
+      // Add form fields
+      request.fields.addAll({
+        'RET_NAME': _retailerNameController.text,
+        'RET_SHOP_NAME': _shopNameController.text,
+        'RET_ADDRESS': _addressController.text,
+        'RET_PIN_CODE': _pinCodeController.text,
+        'RET_EMAIL_ID': _emailController.text,
+        'RET_COUNTRY': _selectedCountry ?? 'India',
+        'RET_STATE': _selectedState ?? '',
+        'RET_CITY': _selectedCity ?? '',
+        'RET_GST_NO': _gstController.text,
+        'SHOP_OPEN_STATUS': _shopOpenStatus,
+      });
+
+      // Add profile image if selected
+      if (_selectedImage != null) {
+        final extension = _selectedImage!.path.toLowerCase().split('.').last;
+        String contentType = 'image/jpeg';
+        
+        switch (extension) {
+          case 'png':
+            contentType = 'image/png';
+            break;
+          case 'gif':
+            contentType = 'image/gif';
+            break;
+          case 'jpg':
+          case 'jpeg':
+          default:
+            contentType = 'image/jpeg';
+            break;
+        }
+        
+        print('Uploading image: ${_selectedImage!.path}');
+        print('Content type: $contentType');
+        print('Extension: $extension');
+        
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'profileImage',
+            _selectedImage!.path,
+            contentType: http_parser.MediaType.parse(contentType),
+          ),
+        );
+      }
+
+      // Send request
+      print('Sending request to: ${ApiConfig.retailersMyRetailer}');
+      print('Request fields: ${request.fields}');
+      print('Request files count: ${request.files.length}');
+      
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      print('Response status: ${response.statusCode}');
+      print('Response body: ${response.body}');
+      
       final data = jsonDecode(response.body);
+
       if (data['success'] == true) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -139,19 +202,112 @@ class _EditRetailerPageState extends State<EditRetailerPage> {
             backgroundColor: Colors.green,
           ),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true); // Return true to indicate successful update
       } else {
         throw Exception(data['message'] ?? 'Failed to update retailer profile');
       }
     } catch (e) {
+      if (!mounted) return;
+      
+      String errorMessage = 'Error updating profile: ${e.toString()}';
+      
+      // Handle specific error messages
+      if (e.toString().contains('only images files are allowed')) {
+        errorMessage = 'Please select a valid image file (JPG, PNG, or GIF)';
+      } else if (e.toString().contains('File too large')) {
+        errorMessage = 'Image file is too large. Please select a smaller image.';
+      } else if (e.toString().contains('No authentication token')) {
+        errorMessage = 'Authentication error. Please login again.';
+      }
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error updating profile: ${e.toString()}'),
+          content: Text(errorMessage),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
         ),
       );
     } finally {
       if (mounted) setState(() => isLoading = false);
+    }
+  }
+
+  Future<void> _selectImageSource() async {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.photo_library),
+                title: const Text('Photo Library'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera),
+                title: const Text('Camera'),
+                onTap: () {
+                  Navigator.of(context).pop();
+                  _pickImage(ImageSource.camera);
+                },
+              ),
+              if (_selectedImage != null || _currentPhotoUrl != null)
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text('Remove Photo', style: TextStyle(color: Colors.red)),
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    setState(() {
+                      _selectedImage = null;
+                      _currentPhotoUrl = null;
+                    });
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 800,
+        maxHeight: 800,
+        preferredCameraDevice: CameraDevice.rear,
+      );
+      
+      if (image != null) {
+        // Validate file extension
+        final extension = image.path.toLowerCase().split('.').last;
+        if (!['jpg', 'jpeg', 'png', 'gif'].contains(extension)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select a valid image file (JPG, PNG, GIF)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+        
+        setState(() {
+          _selectedImage = File(image.path);
+        });
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error selecting image: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
@@ -195,6 +351,112 @@ class _EditRetailerPageState extends State<EditRetailerPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Profile Photo Section - Moved to top
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.grey.withOpacity(0.1),
+                        spreadRadius: 1,
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Profile Photo',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Stack(
+                          children: [
+                            Container(
+                              width: 120,
+                              height: 120,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.grey.withOpacity(0.3),
+                                  width: 2,
+                                ),
+                              ),
+                              child: ClipOval(
+                                child: _selectedImage != null
+                                    ? Image.file(
+                                        _selectedImage!,
+                                        fit: BoxFit.cover,
+                                        width: 120,
+                                        height: 120,
+                                      )
+                                    : _currentPhotoUrl != null
+                                        ? Image.network(
+                                            _currentPhotoUrl!,
+                                            fit: BoxFit.cover,
+                                            width: 120,
+                                            height: 120,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return _buildPlaceholderAvatar();
+                                            },
+                                          )
+                                        : _buildPlaceholderAvatar(),
+                              ),
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: GestureDetector(
+                                onTap: _selectImageSource,
+                                child: Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF9B1B1B),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white,
+                                      width: 2,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.camera_alt,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: TextButton.icon(
+                          onPressed: _selectImageSource,
+                          icon: const Icon(Icons.photo_camera),
+                          label: Text(
+                            _selectedImage != null || _currentPhotoUrl != null
+                                ? 'Change Photo'
+                                : 'Add Photo',
+                          ),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF9B1B1B),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
@@ -478,6 +740,19 @@ class _EditRetailerPageState extends State<EditRetailerPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildPlaceholderAvatar() {
+    return Container(
+      width: 120,
+      height: 120,
+      color: Colors.grey.withOpacity(0.2),
+      child: const Icon(
+        Icons.person,
+        size: 48,
+        color: Colors.grey,
       ),
     );
   }

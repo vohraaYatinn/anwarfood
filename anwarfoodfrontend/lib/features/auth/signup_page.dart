@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../config/api_config.dart';
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
@@ -29,10 +30,8 @@ class _SignupPageState extends State<SignupPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/auth/signup'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        Uri.parse(ApiConfig.authSignup),
+        headers: ApiConfig.defaultHeaders,
         body: jsonEncode({
           'username': _nameController.text,
           'email': _emailController.text,

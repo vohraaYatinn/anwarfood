@@ -17,6 +17,7 @@ import 'features/retailers/retailer_list_page.dart';
 import 'features/retailers/retailer_detail_page.dart';
 import 'features/retailers/self_retailer_detail_page.dart';
 import 'features/retailers/edit_retailer_page.dart';
+import 'features/retailers/retailer_selection_page.dart';
 import 'features/home/home_page.dart';
 import 'features/cart/cart_page.dart';
 import 'features/payment/payment_page.dart';
@@ -85,6 +86,7 @@ class ShoppursShopApp extends StatelessWidget {
         '/retailer-detail': (context) => RetailerDetailPage(),
         '/self-retailer-detail': (context) => const SelfRetailerDetailPage(),
         '/edit-retailer': (context) => const EditRetailerPage(),
+        '/retailer-selection': (context) => const RetailerSelectionPage(),
         '/home': (context) => HomePage(),
         '/cart': (context) => CartPage(),
         '/payment': (context) => PaymentPage(),

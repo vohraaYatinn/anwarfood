@@ -5,7 +5,10 @@ const {
   fetchOrders,
   searchOrders,
   getOrderDetails,
-  updateOrderStatus
+  updateOrderStatus,
+  placeOrderForCustomer,
+  getRetailerList,
+  searchRetailers
 } = require('../controllers/employee.controller');
 
 // Apply employee middleware to all routes
@@ -16,5 +19,10 @@ router.get('/orders', fetchOrders);
 router.get('/orders/search', searchOrders);
 router.get('/orders/:orderId', getOrderDetails);
 router.put('/orders/:orderId/status', updateOrderStatus);
+router.post('/place-order', placeOrderForCustomer);
+
+// Retailer Management Routes
+router.get('/retailers', getRetailerList);
+router.get('/retailers/search', searchRetailers);
 
 module.exports = router; 

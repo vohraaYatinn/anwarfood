@@ -153,6 +153,40 @@
 						}
 					},
 					"response": []
+				},
+				{
+					"name": "Get Product ID by Barcode",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"PRDB_BARCODE\": \"1234567890123\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:3000/api/products/get-by-barcode",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"api",
+								"products",
+								"get-by-barcode"
+							]
+						}
+					},
+					"response": []
 				}
 			]
 		},
@@ -219,6 +253,108 @@
 								"api",
 								"cart",
 								"add"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add to Cart Auto (Minimum Unit)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"productId\": 10\n}"
+						},
+						"url": {
+							"raw": "http://localhost:3000/api/cart/add-auto",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"api",
+								"cart",
+								"add-auto"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Add to Cart by Barcode",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"PRDB_BARCODE\": \"1234567890123\"\n}"
+						},
+						"url": {
+							"raw": "http://localhost:3000/api/cart/add-by-barcode",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"api",
+								"cart",
+								"add-by-barcode"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Edit Cart Unit",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"cartId\": 1,\n    \"unitId\": 2\n}"
+						},
+						"url": {
+							"raw": "http://localhost:3000/api/cart/edit-unit",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"api",
+								"cart",
+								"edit-unit"
 							]
 						}
 					},
@@ -508,6 +644,121 @@
 									"key": "retailerId",
 									"value": "1"
 								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update My Retailer Profile",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{token}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "profileImage",
+									"type": "file",
+									"src": [],
+									"description": "Optional: Upload new profile photo"
+								},
+								{
+									"key": "RET_NAME",
+									"value": "Updated Retailer Name",
+									"type": "text",
+									"description": "Retailer full name"
+								},
+								{
+									"key": "RET_SHOP_NAME",
+									"value": "Updated Shop Name",
+									"type": "text",
+									"description": "Shop name"
+								},
+								{
+									"key": "RET_ADDRESS",
+									"value": "123 Updated Address, City",
+									"type": "text",
+									"description": "Complete address"
+								},
+								{
+									"key": "RET_EMAIL_ID",
+									"value": "updated@email.com",
+									"type": "text",
+									"description": "Email address"
+								},
+								{
+									"key": "RET_TYPE",
+									"value": "wholesale",
+									"type": "text",
+									"description": "Retailer type"
+								},
+								{
+									"key": "RET_PIN_CODE",
+									"value": "123456",
+									"type": "text",
+									"description": "Pin code"
+								},
+								{
+									"key": "RET_COUNTRY",
+									"value": "India",
+									"type": "text",
+									"description": "Country"
+								},
+								{
+									"key": "RET_STATE",
+									"value": "Maharashtra",
+									"type": "text",
+									"description": "State"
+								},
+								{
+									"key": "RET_CITY",
+									"value": "Mumbai",
+									"type": "text",
+									"description": "City"
+								},
+								{
+									"key": "RET_GST_NO",
+									"value": "22AAAAA0000A1Z5",
+									"type": "text",
+									"description": "GST number"
+								},
+								{
+									"key": "RET_LAT",
+									"value": "19.0760",
+									"type": "text",
+									"description": "Latitude"
+								},
+								{
+									"key": "RET_LONG",
+									"value": "72.8777",
+									"type": "text",
+									"description": "Longitude"
+								},
+								{
+									"key": "SHOP_OPEN_STATUS",
+									"value": "Y",
+									"type": "text",
+									"description": "Shop open status (Y/N)"
+								}
+							]
+						},
+						"url": {
+							"raw": "http://localhost:3000/api/retailers/my-retailer",
+							"protocol": "http",
+							"host": [
+								"localhost"
+							],
+							"port": "3000",
+							"path": [
+								"api",
+								"retailers",
+								"my-retailer"
 							]
 						}
 					},

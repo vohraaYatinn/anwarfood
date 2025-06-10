@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
 
 class OtpVerifyPage extends StatefulWidget {
   const OtpVerifyPage({Key? key}) : super(key: key);
@@ -148,10 +149,8 @@ class _OtpVerifyPageState extends State<OtpVerifyPage> {
 
     try {
       final response = await http.post(
-        Uri.parse('http://localhost:3000/api/auth/verify-otp'),
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        Uri.parse(ApiConfig.authVerifyOtp),
+        headers: ApiConfig.defaultHeaders,
         body: jsonEncode({
           'phone': int.parse(phoneNumber!),
           'verification_code': verificationId!,

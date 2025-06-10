@@ -214,6 +214,14 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
+  Future<void> _openRetailerSelection() async {
+    final result = await Navigator.pushNamed(context, '/retailer-selection');
+    if (result == true) {
+      // Refresh orders if a retailer was selected
+      _fetchOrders();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -626,6 +634,13 @@ class _OrdersPageState extends State<OrdersPage> {
           ),
         ],
       ),
+      floatingActionButton: _user?.role.toLowerCase() == 'employee'
+          ? FloatingActionButton(
+              backgroundColor: const Color(0xFF9B1B1B),
+              onPressed: _openRetailerSelection,
+              child: const Icon(Icons.store, color: Colors.white),
+            )
+          : null,
     );
   }
 } 

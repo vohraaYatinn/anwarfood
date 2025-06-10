@@ -263,9 +263,284 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
+// Place order on behalf of customer
+const placeOrderForCustomer = async (req, res) => {
+  const connection = await db.promise().getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const { phoneNumber, addressId, paymentMethod, notes } = req.body;
+
+    if (!phoneNumber) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required'
+      });
+    }
+
+    // Find customer by phone number
+    const [customers] = await connection.query(
+      'SELECT USER_ID, USERNAME, EMAIL FROM user_info WHERE MOBILE = ? AND ISACTIVE = "Y"',
+      [phoneNumber]
+    );
+
+    if (customers.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found with this phone number'
+      });
+    }
+
+    const customer = customers[0];
+    const customerId = customer.USER_ID;
+
+    // Get customer's cart items
+    const [cartItems] = await connection.query(`
+      SELECT c.*, p.PROD_NAME, p.PROD_MRP, p.PROD_SP,
+             pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
+      FROM cart c
+      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
+      WHERE c.USER_ID = ?
+    `, [customerId]);
+
+    if (cartItems.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Customer cart is empty'
+      });
+    }
+
+    // Get address details
+    let orderAddress = null;
+    if (addressId) {
+      const [address] = await connection.query(
+        'SELECT * FROM customer_address WHERE ADDRESS_ID = ? AND USER_ID = ? AND DEL_STATUS != "Y"',
+        [addressId, customerId]
+      );
+      
+      if (address.length === 0) {
+        await connection.rollback();
+        return res.status(404).json({
+          success: false,
+          message: 'Address not found for this customer'
+        });
+      }
+      orderAddress = address[0];
+    } else {
+      // Use default address
+      const [defaultAddr] = await connection.query(
+        'SELECT * FROM customer_address WHERE USER_ID = ? AND IS_DEFAULT = 1 AND DEL_STATUS != "Y" LIMIT 1',
+        [customerId]
+      );
+      
+      if (defaultAddr.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: 'No default address found for customer. Please provide addressId.'
+        });
+      }
+      orderAddress = defaultAddr[0];
+    }
+
+    // Calculate order total
+    const orderTotal = cartItems.reduce((total, item) => {
+      return total + (item.PU_PROD_RATE * item.QUANTITY);
+    }, 0);
+
+    // Generate order number
+    const orderNumber = 'ORD' + Date.now();
+
+    // Create order with employee as CREATED_BY
+    const [orderResult] = await connection.query(`
+      INSERT INTO orders (
+        ORDER_NUMBER, USER_ID, ORDER_TOTAL, ORDER_STATUS, 
+        DELIVERY_ADDRESS, DELIVERY_CITY, DELIVERY_STATE, 
+        DELIVERY_COUNTRY, DELIVERY_PINCODE, DELIVERY_LANDMARK,
+        PAYMENT_METHOD, ORDER_NOTES, CREATED_DATE, CREATED_BY, UPDATED_BY
+      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)
+    `, [
+      orderNumber, customerId, orderTotal, 
+      orderAddress.ADDRESS, orderAddress.CITY, orderAddress.STATE,
+      orderAddress.COUNTRY, orderAddress.PINCODE, orderAddress.LANDMARK,
+      paymentMethod || 'cod', notes || '',
+      req.user.USER_ID, req.user.USER_ID
+    ]);
+
+    const orderId = orderResult.insertId;
+
+    // Create order items
+    for (const item of cartItems) {
+      await connection.query(`
+        INSERT INTO order_items (
+          ORDER_ID, PROD_ID, UNIT_ID, QUANTITY, 
+          UNIT_PRICE, TOTAL_PRICE, CREATED_DATE
+        ) VALUES (?, ?, ?, ?, ?, ?, NOW())
+      `, [
+        orderId, item.PROD_ID, item.UNIT_ID, item.QUANTITY,
+        item.PU_PROD_RATE, (item.PU_PROD_RATE * item.QUANTITY)
+      ]);
+    }
+
+    // Clear customer's cart
+    await connection.query('DELETE FROM cart WHERE USER_ID = ?', [customerId]);
+
+    await connection.commit();
+
+    res.status(201).json({
+      success: true,
+      message: 'Order placed successfully for customer',
+      data: {
+        orderId: orderId,
+        orderNumber: orderNumber,
+        customerId: customerId,
+        customerName: customer.USERNAME,
+        customerEmail: customer.EMAIL,
+        orderTotal: orderTotal,
+        createdBy: req.user.USERNAME,
+        deliveryAddress: {
+          address: orderAddress.ADDRESS,
+          city: orderAddress.CITY,
+          state: orderAddress.STATE,
+          country: orderAddress.COUNTRY,
+          pincode: orderAddress.PINCODE,
+          landmark: orderAddress.LANDMARK
+        }
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Place order for customer error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error placing order for customer',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Get all retailers with pagination and status filtering
+const getRetailerList = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, status } = req.query;
+    const offset = (page - 1) * limit;
+
+    let whereClause = '';
+    let params = [];
+
+    if (status) {
+      whereClause = 'WHERE RET_DEL_STATUS = ?';
+      params.push(status);
+    }
+
+    const [retailers] = await db.promise().query(
+      `SELECT RET_ID, RET_CODE, RET_TYPE, RET_NAME, RET_SHOP_NAME, RET_MOBILE_NO,
+       RET_ADDRESS, RET_PIN_CODE, RET_PHOTO, RET_EMAIL_ID, RET_COUNTRY, RET_STATE, RET_CITY,
+       RET_GST_NO, RET_DEL_STATUS, SHOP_OPEN_STATUS, CREATED_DATE
+       FROM retailer_info ${whereClause}
+       ORDER BY CREATED_DATE DESC
+       LIMIT ? OFFSET ?`,
+      [...params, parseInt(limit), offset]
+    );
+
+    const [countResult] = await db.promise().query(
+      `SELECT COUNT(*) as total FROM retailer_info ${whereClause}`,
+      params
+    );
+
+    res.json({
+      success: true,
+      data: {
+        retailers,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: Math.ceil(countResult[0].total / limit),
+          totalRetailers: countResult[0].total,
+          limit: parseInt(limit)
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get retailers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching retailers',
+      error: error.message
+    });
+  }
+};
+
+// Search retailers by code, shop name, or mobile number
+const searchRetailers = async (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required'
+      });
+    }
+
+    const [retailers] = await db.promise().query(`
+      SELECT RET_ID, RET_CODE, RET_NAME, RET_SHOP_NAME, RET_MOBILE_NO, 
+             RET_PHOTO, RET_ADDRESS, RET_CITY, RET_STATE, RET_DEL_STATUS, 
+             SHOP_OPEN_STATUS, CREATED_DATE
+      FROM retailer_info 
+      WHERE RET_DEL_STATUS = 'active'
+      AND (
+        RET_CODE LIKE ? OR
+        RET_SHOP_NAME LIKE ? OR
+        RET_NAME LIKE ? OR
+        RET_MOBILE_NO LIKE ?
+      )
+      ORDER BY 
+        CASE 
+          WHEN RET_CODE = ? THEN 1
+          WHEN RET_SHOP_NAME LIKE ? THEN 2
+          WHEN RET_NAME LIKE ? THEN 3
+          WHEN RET_MOBILE_NO = ? THEN 4
+          ELSE 5
+        END,
+        RET_SHOP_NAME ASC
+    `, [
+      `%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`,
+      query, `${query}%`, `${query}%`, query
+    ]);
+
+    res.json({
+      success: true,
+      data: retailers,
+      count: retailers.length,
+      filters: {
+        query: query
+      }
+    });
+
+  } catch (error) {
+    console.error('Error in searchRetailers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error searching retailers',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   fetchOrders,
   searchOrders,
   getOrderDetails,
-  updateOrderStatus
+  updateOrderStatus,
+  placeOrderForCustomer,
+  getRetailerList,
+  searchRetailers
 }; 

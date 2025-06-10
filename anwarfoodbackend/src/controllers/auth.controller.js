@@ -2,8 +2,19 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { pool: db } = require('../config/database');
 const axios = require('axios');
+const QRCode = require('qrcode');
+const path = require('path');
+const fs = require('fs');
 
+// Ensure upload directories exist
+const createDirectory = (dirPath) => {
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+};
 
+// Create required directories
+createDirectory(path.join(__dirname, '../../uploads/retailers/qrcode'));
 
 async function sendVerificationOTP(phone) {
   const url = 'https://cpaas.messagecentral.com/verification/v3/send';
@@ -269,32 +280,112 @@ const verifyOtp = async (req, res) => {
 
       // Format the code with leading zeros (e.g., RET001, RET002)
       const retCode = `RET${nextNumber.toString().padStart(3, '0')}`;
-      
-      await db.promise().query(
-        `INSERT INTO retailer_info (
-          RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
-          RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY, RET_STATE, RET_CITY, 
-          RET_DEL_STATUS, CREATED_DATE, UPDATED_DATE, CREATED_BY, UPDATED_BY
-        ) VALUES (
-          ?, 'Grocery', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?, ?
-        )`,
-        [
-          retCode,
-          user.USERNAME || 'User',
-          phone,
-          user.ADDRESS || 'Not provided',
-          user.ZIP || 0,
-          user.EMAIL,
-          'default-photo.jpg',
-          'India',
-          user.PROVINCE || 'Not provided',
-          user.CITY || 'Not provided',
-          phone,
-          phone
-        ]
-      );
 
-      console.log(`Retailer profile created for user: ${phone}`);
+      try {
+        // Generate QR code for the phone number
+        const qrFileName = `qr_${phone}_${Date.now()}.png`;
+        const qrPath = path.join(__dirname, '../../uploads/retailers/qrcode', qrFileName);
+        
+        // Convert phone to string and add country code for better identification
+        const phoneWithCode = `+91${phone.toString()}`;
+        
+        // Generate QR code
+        await QRCode.toFile(qrPath, phoneWithCode, {
+          errorCorrectionLevel: 'H',
+          width: 500,
+          margin: 1,
+          color: {
+            dark: '#000000',
+            light: '#ffffff'
+          }
+        });
+        
+        await db.promise().query(
+          `INSERT INTO retailer_info (
+            RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
+            RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY, RET_STATE, RET_CITY, 
+            RET_DEL_STATUS, CREATED_DATE, UPDATED_DATE, CREATED_BY, UPDATED_BY,
+            BARCODE_URL
+          ) VALUES (
+            ?, 'Grocery', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?, ?,
+            ?
+          )`,
+          [
+            retCode,
+            user.USERNAME || 'User',
+            phone,
+            user.ADDRESS || 'Not provided',
+            user.ZIP || 0,
+            user.EMAIL,
+            'default-photo.jpg',
+            'India',
+            user.PROVINCE || 'Not provided',
+            user.CITY || 'Not provided',
+            phone,
+            phone,
+            qrFileName
+          ]
+        );
+
+        console.log(`Retailer profile created for user: ${phone}`);
+      } catch (qrError) {
+        console.error('QR Code generation error:', qrError);
+        // Continue with profile creation even if QR generation fails
+        await db.promise().query(
+          `INSERT INTO retailer_info (
+            RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
+            RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY, RET_STATE, RET_CITY, 
+            RET_DEL_STATUS, CREATED_DATE, UPDATED_DATE, CREATED_BY, UPDATED_BY
+          ) VALUES (
+            ?, 'Grocery', ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NOW(), NOW(), ?, ?
+          )`,
+          [
+            retCode,
+            user.USERNAME || 'User',
+            phone,
+            user.ADDRESS || 'Not provided',
+            user.ZIP || 0,
+            user.EMAIL,
+            'default-photo.jpg',
+            'India',
+            user.PROVINCE || 'Not provided',
+            user.CITY || 'Not provided',
+            phone,
+            phone
+          ]
+        );
+      }
+    } else {
+      // If retailer exists but doesn't have a QR code, generate one
+      if (!existingRetailer[0].BARCODE_URL) {
+        try {
+          const qrFileName = `qr_${phone}_${Date.now()}.png`;
+          const qrPath = path.join(__dirname, '../../uploads/retailers/qrcode', qrFileName);
+          
+          // Convert phone to string and add country code for better identification
+          const phoneWithCode = `+91${phone.toString()}`;
+          
+          // Generate QR code
+          await QRCode.toFile(qrPath, phoneWithCode, {
+            errorCorrectionLevel: 'H',
+            width: 500,
+            margin: 1,
+            color: {
+              dark: '#000000',
+              light: '#ffffff'
+            }
+          });
+
+          // Update retailer with QR code filename
+          await db.promise().query(
+            'UPDATE retailer_info SET BARCODE_URL = ? WHERE RET_MOBILE_NO = ?',
+            [qrFileName, phone]
+          );
+        } catch (qrError) {
+          console.error('QR Code generation error:', qrError);
+          // Continue without updating QR code if generation fails
+        }
+      }
     }
 
     res.json({

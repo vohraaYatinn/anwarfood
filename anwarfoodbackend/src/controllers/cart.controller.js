@@ -65,6 +65,297 @@ const addToCart = async (req, res) => {
   }
 };
 
+const addToCartAuto = async (req, res) => {
+  try {
+    const { productId } = req.body;
+    const userId = req.user.userId;
+
+    // First check if product exists and get its details
+    const [products] = await db.promise().query(
+      'SELECT * FROM product WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
+      [productId]
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found'
+      });
+    }
+
+    // Get all units for this product and find the one with minimum PU_PROD_UNIT_VALUE
+    const [units] = await db.promise().query(
+      'SELECT * FROM product_unit WHERE PU_PROD_ID = ? AND PU_STATUS = "A" ORDER BY PU_PROD_UNIT_VALUE ASC LIMIT 1',
+      [productId]
+    );
+
+    if (units.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active units found for this product'
+      });
+    }
+
+    const selectedUnit = units[0];
+    const unitId = selectedUnit.PU_ID;
+    const quantity = selectedUnit.PU_PROD_UNIT_VALUE;
+
+    // Check if item already exists in cart with this unit
+    const [existingItems] = await db.promise().query(
+      'SELECT * FROM cart WHERE USER_ID = ? AND PROD_ID = ? AND UNIT_ID = ?',
+      [userId, productId, unitId]
+    );
+
+    if (existingItems.length > 0) {
+      // Update quantity if item exists
+      await db.promise().query(
+        'UPDATE cart SET QUANTITY = QUANTITY + ? WHERE USER_ID = ? AND PROD_ID = ? AND UNIT_ID = ?',
+        [quantity, userId, productId, unitId]
+      );
+    } else {
+      // Insert new cart item
+      await db.promise().query(
+        'INSERT INTO cart (USER_ID, PROD_ID, UNIT_ID, QUANTITY, CREATED_DATE) VALUES (?, ?, ?, ?, NOW())',
+        [userId, productId, unitId, quantity]
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Item added to cart automatically with minimum unit',
+      data: {
+        productId: productId,
+        unitId: unitId,
+        unitName: selectedUnit.PU_PROD_UNIT,
+        unitValue: selectedUnit.PU_PROD_UNIT_VALUE,
+        quantity: quantity,
+        rate: selectedUnit.PU_PROD_RATE,
+        total: selectedUnit.PU_PROD_RATE * quantity
+      }
+    });
+  } catch (error) {
+    console.error('Add to cart auto error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error adding item to cart automatically',
+      error: error.message
+    });
+  }
+};
+
+const addToCartByBarcode = async (req, res) => {
+  try {
+    const { PRDB_BARCODE } = req.body;
+    const userId = req.user.userId;
+
+    // Validate input
+    if (!PRDB_BARCODE) {
+      return res.status(400).json({
+        success: false,
+        message: 'Barcode is required'
+      });
+    }
+
+    // Find product using barcode
+    const [barcodeResults] = await db.promise().query(
+      'SELECT PRDB_PROD_ID FROM product_barcodes WHERE PRDB_BARCODE = ? AND SOLD_STATUS = "A"',
+      [PRDB_BARCODE]
+    );
+
+    if (barcodeResults.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found with this barcode or barcode is not active'
+      });
+    }
+
+    const productId = barcodeResults[0].PRDB_PROD_ID;
+
+    // Check if product exists and get its details
+    const [products] = await db.promise().query(
+      'SELECT * FROM product WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
+      [productId]
+    );
+
+    if (products.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Product not found or deleted'
+      });
+    }
+
+    // Get all units for this product and find the one with minimum PU_PROD_UNIT_VALUE
+    const [units] = await db.promise().query(
+      'SELECT * FROM product_unit WHERE PU_PROD_ID = ? AND PU_STATUS = "A" ORDER BY PU_PROD_UNIT_VALUE ASC LIMIT 1',
+      [productId]
+    );
+
+    if (units.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'No active units found for this product'
+      });
+    }
+
+    const selectedUnit = units[0];
+    const unitId = selectedUnit.PU_ID;
+    const quantity = selectedUnit.PU_PROD_UNIT_VALUE;
+
+    // Check if item already exists in cart with this unit
+    const [existingItems] = await db.promise().query(
+      'SELECT * FROM cart WHERE USER_ID = ? AND PROD_ID = ? AND UNIT_ID = ?',
+      [userId, productId, unitId]
+    );
+
+    if (existingItems.length > 0) {
+      // Update quantity if item exists
+      await db.promise().query(
+        'UPDATE cart SET QUANTITY = QUANTITY + ? WHERE USER_ID = ? AND PROD_ID = ? AND UNIT_ID = ?',
+        [quantity, userId, productId, unitId]
+      );
+    } else {
+      // Insert new cart item
+      await db.promise().query(
+        'INSERT INTO cart (USER_ID, PROD_ID, UNIT_ID, QUANTITY, CREATED_DATE) VALUES (?, ?, ?, ?, NOW())',
+        [userId, productId, unitId, quantity]
+      );
+    }
+
+    res.json({
+      success: true,
+      message: 'Product added to cart successfully using barcode',
+      data: {
+        barcode: PRDB_BARCODE,
+        productId: productId,
+        productName: products[0].PROD_NAME,
+        unitId: unitId,
+        unitName: selectedUnit.PU_PROD_UNIT,
+        unitValue: selectedUnit.PU_PROD_UNIT_VALUE,
+        quantity: quantity,
+        rate: selectedUnit.PU_PROD_RATE,
+        total: selectedUnit.PU_PROD_RATE * quantity
+      }
+    });
+  } catch (error) {
+    console.error('Add to cart by barcode error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error adding item to cart using barcode',
+      error: error.message
+    });
+  }
+};
+
+const editCartUnit = async (req, res) => {
+  try {
+    const { cartId, unitId } = req.body;
+    const userId = req.user.userId;
+
+    // Validate input
+    if (!cartId || !unitId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cart ID and Unit ID are required'
+      });
+    }
+
+    // Get cart item and verify it belongs to the user
+    const [cartItems] = await db.promise().query(
+      'SELECT * FROM cart WHERE CART_ID = ? AND USER_ID = ?',
+      [cartId, userId]
+    );
+
+    if (cartItems.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Cart item not found or does not belong to user'
+      });
+    }
+
+    const cartItem = cartItems[0];
+    const productId = cartItem.PROD_ID;
+
+    // Validate that the new unit exists and belongs to the same product
+    const [units] = await db.promise().query(
+      'SELECT * FROM product_unit WHERE PU_ID = ? AND PU_PROD_ID = ? AND PU_STATUS = "A"',
+      [unitId, productId]
+    );
+
+    if (units.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Unit not found or not active for this product'
+      });
+    }
+
+    const newUnit = units[0];
+    const newQuantity = newUnit.PU_PROD_UNIT_VALUE;
+
+    // Check if there's already a cart item with this unit for the same product
+    const [existingItems] = await db.promise().query(
+      'SELECT * FROM cart WHERE USER_ID = ? AND PROD_ID = ? AND UNIT_ID = ? AND CART_ID != ?',
+      [userId, productId, unitId, cartId]
+    );
+
+    if (existingItems.length > 0) {
+      // If item with new unit already exists, merge quantities and delete current item
+      await db.promise().query(
+        'UPDATE cart SET QUANTITY = QUANTITY + ? WHERE USER_ID = ? AND PROD_ID = ? AND UNIT_ID = ?',
+        [newQuantity, userId, productId, unitId]
+      );
+
+      await db.promise().query(
+        'DELETE FROM cart WHERE CART_ID = ? AND USER_ID = ?',
+        [cartId, userId]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Unit changed and quantities merged with existing cart item',
+        data: {
+          action: 'merged',
+          productId: productId,
+          newUnitId: unitId,
+          newQuantity: newQuantity,
+          unitName: newUnit.PU_PROD_UNIT,
+          unitValue: newUnit.PU_PROD_UNIT_VALUE,
+          rate: newUnit.PU_PROD_RATE
+        }
+      });
+    } else {
+      // Update the cart item with new unit and quantity
+      await db.promise().query(
+        'UPDATE cart SET UNIT_ID = ?, QUANTITY = ? WHERE CART_ID = ? AND USER_ID = ?',
+        [unitId, newQuantity, cartId, userId]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Cart item unit updated successfully',
+        data: {
+          action: 'updated',
+          cartId: cartId,
+          productId: productId,
+          newUnitId: unitId,
+          newQuantity: newQuantity,
+          unitName: newUnit.PU_PROD_UNIT,
+          unitValue: newUnit.PU_PROD_UNIT_VALUE,
+          rate: newUnit.PU_PROD_RATE,
+          total: newUnit.PU_PROD_RATE * newQuantity
+        }
+      });
+    }
+
+  } catch (error) {
+    console.error('Edit cart unit error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error updating cart unit',
+      error: error.message
+    });
+  }
+};
+
 const fetchCart = async (req, res) => {
   try {
     const userId = req.user.userId;
@@ -131,6 +422,33 @@ const fetchCart = async (req, res) => {
       }
     }
 
+    // Get all available units for products in cart
+    const productIds = [...new Set(cartItems.map(item => item.PROD_ID))];
+    let allUnitsMap = {};
+    
+    if (productIds.length > 0) {
+      const [allUnits] = await db.promise().query(`
+        SELECT PU_ID, PU_PROD_ID, PU_PROD_UNIT, PU_PROD_UNIT_VALUE, PU_PROD_RATE, PU_STATUS
+        FROM product_unit 
+        WHERE PU_PROD_ID IN (${productIds.map(() => '?').join(',')}) AND PU_STATUS = 'A'
+        ORDER BY PU_PROD_ID, PU_PROD_UNIT_VALUE ASC
+      `, productIds);
+
+      // Group units by product ID
+      allUnits.forEach(unit => {
+        if (!allUnitsMap[unit.PU_PROD_ID]) {
+          allUnitsMap[unit.PU_PROD_ID] = [];
+        }
+        allUnitsMap[unit.PU_PROD_ID].push({
+          id: unit.PU_ID,
+          name: unit.PU_PROD_UNIT,
+          value: unit.PU_PROD_UNIT_VALUE,
+          rate: unit.PU_PROD_RATE,
+          status: unit.PU_STATUS
+        });
+      });
+    }
+
     // Calculate totals using PU_PROD_RATE
     const cartTotal = cartItems.reduce((total, item) => {
       return total + (item.PU_PROD_RATE * item.QUANTITY);
@@ -166,13 +484,14 @@ const fetchCart = async (req, res) => {
           image3: item.PROD_IMAGE_3
         }
       },
-      unit: {
+      selectedUnit: {
         id: item.UNIT_ID,
         name: item.PU_PROD_UNIT,
         value: item.PU_PROD_UNIT_VALUE,
         rate: item.PU_PROD_RATE,
         status: item.PU_STATUS
       },
+      availableUnits: allUnitsMap[item.PROD_ID] || [],
       itemTotal: item.PU_PROD_RATE * item.QUANTITY
     }));
 
@@ -263,19 +582,21 @@ const placeOrder = async (req, res) => {
       // Generate order number
       const orderNumber = 'ORD' + Date.now();
 
-      // Create order
+      // Create order with payment image if provided
       const [orderResult] = await db.promise().query(`
         INSERT INTO orders (
           ORDER_NUMBER, USER_ID, ORDER_TOTAL, ORDER_STATUS, 
           DELIVERY_ADDRESS, DELIVERY_CITY, DELIVERY_STATE, 
           DELIVERY_COUNTRY, DELIVERY_PINCODE, DELIVERY_LANDMARK,
-          PAYMENT_METHOD, ORDER_NOTES, CREATED_DATE
-        ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+          PAYMENT_METHOD, PAYMENT_IMAGE, ORDER_NOTES, CREATED_DATE
+        ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       `, [
         orderNumber, userId, orderTotal, 
         orderAddress.ADDRESS, orderAddress.CITY, orderAddress.STATE,
         orderAddress.COUNTRY, orderAddress.PINCODE, orderAddress.LANDMARK,
-        paymentMethod || 'cod', notes || ''
+        paymentMethod || 'cod',
+        req.uploadedFile ? req.uploadedFile.filename : null,
+        notes || ''
       ]);
 
       const orderId = orderResult.insertId;
@@ -306,6 +627,7 @@ const placeOrder = async (req, res) => {
           orderId: orderId,
           orderNumber: orderNumber,
           orderTotal: orderTotal,
+          paymentImage: req.uploadedFile ? `/uploads/orders/${req.uploadedFile.filename}` : null,
           deliveryAddress: {
             address: orderAddress.ADDRESS,
             city: orderAddress.CITY,
@@ -499,6 +821,9 @@ const getCartItemCount = async (req, res) => {
 
 module.exports = {
   addToCart,
+  addToCartAuto,
+  addToCartByBarcode,
+  editCartUnit,
   fetchCart,
   placeOrder,
   increaseQuantity,

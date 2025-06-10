@@ -7,7 +7,7 @@ import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:html' as html;
+import '../../config/api_config.dart';
 
 class OrderDetailsPage extends StatefulWidget {
   const OrderDetailsPage({Key? key}) : super(key: key);
@@ -383,8 +383,20 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       setState(() {
         _isCancelling = true;
       });
-      
-      final result = await _orderService.adminUpdateOrderStatus(_order!['ORDER_ID'], 'cancelled');
+
+      final userRole = _user?.role?.toLowerCase() ?? '';
+      final orderId = _order!['ORDER_ID'];
+      Map<String, dynamic> result;
+
+      // Use different API endpoints based on user role
+      if (userRole == 'admin') {
+        result = await _orderService.adminUpdateOrderStatus(orderId, 'cancelled');
+      } else if (userRole == 'employee') {
+        result = await _orderService.employeeUpdateOrderStatus(orderId, 'cancelled');
+      } else {
+        // For regular customers
+        result = await _orderService.cancelOrder(orderId);
+      }
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -831,6 +843,178 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                                         fontSize: 16,
                                       ),
                                     ),
+                                    if (_order!['PAYMENT_METHOD'] != null || (_order!['PAYMENT_IMAGE'] != null && _order!['PAYMENT_IMAGE'].toString().isNotEmpty)) ...[
+                                      const SizedBox(height: 20),
+                                      const Divider(),
+                                      const SizedBox(height: 16),
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(
+                                              Icons.payment_rounded,
+                                              color: Color(0xFF9B1B1B),
+                                              size: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (_order!['PAYMENT_METHOD'] != null) ...[
+                                                  const Text(
+                                                    'Payment Method',
+                                                    style: TextStyle(
+                                                      color: Colors.grey,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '${_order!['PAYMENT_METHOD']}',
+                                                    style: const TextStyle(
+                                                      fontWeight: FontWeight.w500,
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                ],
+                                                if (_order!['PAYMENT_IMAGE'] != null && _order!['PAYMENT_IMAGE'].toString().isNotEmpty) ...[
+                                                  if (_order!['PAYMENT_METHOD'] != null)
+                                                    const SizedBox(height: 12),
+                                                  Row(
+                                                    children: [
+                                                      const Text(
+                                                        'Payment Screenshot',
+                                                        style: TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      TextButton(
+                                                        onPressed: () {
+                                                          showDialog(
+                                                            context: context,
+                                                            builder: (context) => Dialog(
+                                                              shape: RoundedRectangleBorder(
+                                                                borderRadius: BorderRadius.circular(20),
+                                                              ),
+                                                              child: Column(
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  AppBar(
+                                                                    backgroundColor: Colors.transparent,
+                                                                    elevation: 0,
+                                                                    leading: IconButton(
+                                                                      icon: const Icon(Icons.close, color: Colors.black),
+                                                                      onPressed: () => Navigator.pop(context),
+                                                                    ),
+                                                                    title: const Text(
+                                                                      'Payment Screenshot',
+                                                                      style: TextStyle(
+                                                                        color: Colors.black,
+                                                                        fontSize: 18,
+                                                                        fontWeight: FontWeight.bold,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Container(
+                                                                    constraints: BoxConstraints(
+                                                                      maxHeight: MediaQuery.of(context).size.height * 0.7,
+                                                                    ),
+                                                                    child: InteractiveViewer(
+                                                                      panEnabled: true,
+                                                                      boundaryMargin: const EdgeInsets.all(20),
+                                                                      minScale: 0.5,
+                                                                      maxScale: 4,
+                                                                      child: Image.network(
+                                                                        '${ApiConfig.baseUrl}/uploads/orders/${_order!['PAYMENT_IMAGE']}',
+                                                                        fit: BoxFit.contain,
+                                                                        loadingBuilder: (context, child, loadingProgress) {
+                                                                          if (loadingProgress == null) return child;
+                                                                          return Center(
+                                                                            child: CircularProgressIndicator(
+                                                                              value: loadingProgress.expectedTotalBytes != null
+                                                                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                                                                  : null,
+                                                                              color: const Color(0xFF9B1B1B),
+                                                                            ),
+                                                                          );
+                                                                        },
+                                                                        errorBuilder: (context, error, stackTrace) {
+                                                                          return const Center(
+                                                                            child: Column(
+                                                                              mainAxisSize: MainAxisSize.min,
+                                                                              children: [
+                                                                                Icon(
+                                                                                  Icons.error_outline,
+                                                                                  color: Colors.red,
+                                                                                  size: 48,
+                                                                                ),
+                                                                                SizedBox(height: 8),
+                                                                                Text(
+                                                                                  'Failed to load image',
+                                                                                  style: TextStyle(
+                                                                                    color: Colors.red,
+                                                                                    fontSize: 16,
+                                                                                  ),
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          );
+                                                                        },
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  const SizedBox(height: 16),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                        style: TextButton.styleFrom(
+                                                          foregroundColor: const Color(0xFF9B1B1B),
+                                                          padding: const EdgeInsets.symmetric(
+                                                            horizontal: 12,
+                                                            vertical: 8,
+                                                          ),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(8),
+                                                            side: const BorderSide(
+                                                              color: Color(0xFF9B1B1B),
+                                                              width: 1,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: const [
+                                                            Icon(Icons.image, size: 18),
+                                                            SizedBox(width: 4),
+                                                            Text(
+                                                              'View',
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ),

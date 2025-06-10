@@ -282,7 +282,6 @@ const updateRetailerProfile = async (req, res) => {
       RET_ADDRESS,
       RET_PIN_CODE,
       RET_EMAIL_ID,
-      RET_PHOTO,
       RET_COUNTRY,
       RET_STATE,
       RET_CITY,
@@ -350,10 +349,13 @@ const updateRetailerProfile = async (req, res) => {
       updateFields.push('RET_EMAIL_ID = ?');
       updateValues.push(RET_EMAIL_ID);
     }
-    if (RET_PHOTO !== undefined) {
+    
+    // Handle profile image upload
+    if (req.uploadedFile) {
       updateFields.push('RET_PHOTO = ?');
-      updateValues.push(RET_PHOTO);
+      updateValues.push(req.uploadedFile.filename);
     }
+    
     if (RET_COUNTRY !== undefined) {
       updateFields.push('RET_COUNTRY = ?');
       updateValues.push(RET_COUNTRY);
@@ -412,10 +414,20 @@ const updateRetailerProfile = async (req, res) => {
       WHERE RET_ID = ? AND RET_DEL_STATUS = 'active'
     `, [retailerId]);
 
+    // Add photo URL if photo exists
+    const retailerData = updatedRetailer[0];
+    if (retailerData.RET_PHOTO) {
+      retailerData.RET_PHOTO_URL = `http://localhost:3000/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
+    }
+
     res.json({
       success: true,
       message: 'Retailer profile updated successfully',
-      data: updatedRetailer[0]
+      data: retailerData,
+      uploadedFile: req.uploadedFile ? {
+        filename: req.uploadedFile.filename,
+        url: `http://localhost:3000/uploads/retailers/profiles/${req.uploadedFile.filename}`
+      } : null
     });
 
   } catch (error) {

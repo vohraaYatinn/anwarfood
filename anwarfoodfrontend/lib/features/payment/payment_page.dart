@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../services/settings_service.dart';
+import '../../services/retailer_service.dart';
 import '../order/order_success_page.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
+import 'package:http_parser/http_parser.dart' as http_parser;
 
 class PaymentPage extends StatefulWidget {
   const PaymentPage({Key? key}) : super(key: key);
@@ -19,7 +21,9 @@ class PaymentPage extends StatefulWidget {
 class _PaymentPageState extends State<PaymentPage> {
   final AuthService _authService = AuthService();
   final SettingsService _settingsService = SettingsService();
+  final RetailerService _retailerService = RetailerService();
   final ImagePicker _picker = ImagePicker();
+  final TextEditingController _notesController = TextEditingController();
   bool _isLoading = false;
   bool _isBankDetailsLoading = true;
   Map<String, dynamic>? _bankDetails;
@@ -27,11 +31,30 @@ class _PaymentPageState extends State<PaymentPage> {
   dynamic _paymentScreenshot; // File for mobile, XFile for web
   bool _showImageUpload = false;
   Uint8List? _webImage; // For web platform
+  String? _retailerPhone;
 
   @override
   void initState() {
     super.initState();
     _loadBankDetails();
+    _loadRetailerPhone();
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadRetailerPhone() async {
+    try {
+      final phone = await _retailerService.getSelectedRetailerPhone();
+      setState(() {
+        _retailerPhone = phone;
+      });
+    } catch (e) {
+      print('Error loading retailer phone: $e');
+    }
   }
 
   Future<void> _loadBankDetails() async {
@@ -49,28 +72,37 @@ class _PaymentPageState extends State<PaymentPage> {
     }
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _pickImage(ImageSource source) async {
     try {
-      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 80,
+        maxWidth: 800,
+        maxHeight: 800,
+        preferredCameraDevice: CameraDevice.rear,
+      );
+      
       if (image != null) {
-        if (kIsWeb) {
-          // Handle web platform
-          final bytes = await image.readAsBytes();
-          setState(() {
-            _webImage = bytes;
-            _paymentScreenshot = image;
-          });
-        } else {
-          // Handle mobile platforms
-          setState(() {
-            _paymentScreenshot = File(image.path);
-          });
+        // Validate file extension
+        final extension = image.path.toLowerCase().split('.').last;
+        if (!['jpg', 'jpeg', 'png', 'gif'].contains(extension)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please select a valid image file (JPG, PNG, GIF)'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
         }
+        
+        setState(() {
+          _paymentScreenshot = kIsWeb ? image : File(image.path);
+        });
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error picking image: $e'),
+          content: Text('Error selecting image: ${e.toString()}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -93,39 +125,18 @@ class _PaymentPageState extends State<PaymentPage> {
       
       if (token == null) throw Exception('No authentication token found');
       if (user == null) throw Exception('User not found');
-      if (user.role.toLowerCase() != 'customer') throw Exception('Only customers can place orders');
       
       if (isPaidOnline && _paymentScreenshot == null) {
         throw Exception('Please upload payment screenshot');
       }
 
-      final response = await http.post(
-        Uri.parse('http://localhost:3000/api/cart/place-order'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'paid_online': isPaidOnline,
-          'authentication': token,
-          'user_id': user.id,
-          'paymentMethod': isPaidOnline ? 'online' : 'cod',
-          // Add payment screenshot handling here when backend is ready
-        }),
-      );
-
-      final data = jsonDecode(response.body);
-      if (data['success'] == true) {
-        if (mounted) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (context) => OrderSuccessPage(orderDetails: data['data']),
-            ),
-          );
-        }
+      // Check if user is employee
+      if (user.role.toLowerCase() == 'employee') {
+        await _placeEmployeeOrder(isPaidOnline: isPaidOnline, token: token);
+      } else if (user.role.toLowerCase() == 'customer') {
+        await _placeCustomerOrder(isPaidOnline: isPaidOnline, token: token, user: user);
       } else {
-        throw Exception(data['message'] ?? 'Failed to place order');
+        throw Exception('Invalid user role for placing orders');
       }
     } catch (e) {
       if (mounted) {
@@ -142,6 +153,200 @@ class _PaymentPageState extends State<PaymentPage> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _placeEmployeeOrder({required bool isPaidOnline, required String token}) async {
+    if (_retailerPhone == null || _retailerPhone!.isEmpty) {
+      throw Exception('No retailer selected. Please select a retailer first.');
+    }
+
+    // Get address ID from arguments passed to this page
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final addressId = args?['addressId'] as int?;
+    
+    if (addressId == null) {
+      throw Exception('No delivery address selected');
+    }
+
+    print('Placing employee order with retailer phone: $_retailerPhone');
+
+    // Create multipart request
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('http://192.168.29.96:3000/api/employee/place-order'),
+    );
+
+    // Add headers
+    request.headers.addAll({
+      'Authorization': 'Bearer $token',
+    });
+
+    // Add form fields
+    request.fields.addAll({
+      'phoneNumber': _retailerPhone!,
+      'addressId': addressId.toString(),
+      'paymentMethod': isPaidOnline ? 'online' : 'cod',
+      'notes': _notesController.text.trim().isEmpty ? '' : _notesController.text.trim(),
+    });
+
+    // Add payment screenshot if paid online
+    if (isPaidOnline && _paymentScreenshot != null) {
+      if (kIsWeb) {
+        // Handle web platform
+        final xFile = _paymentScreenshot as XFile;
+        final bytes = await xFile.readAsBytes();
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'paymentmethod',
+            bytes,
+            filename: xFile.name,
+            contentType: http_parser.MediaType('image', xFile.name.split('.').last),
+          ),
+        );
+      } else {
+        // Handle mobile platforms
+        final file = _paymentScreenshot as File;
+        final extension = file.path.toLowerCase().split('.').last;
+        String contentType = 'image/jpeg';
+        
+        switch (extension) {
+          case 'png':
+            contentType = 'image/png';
+            break;
+          case 'gif':
+            contentType = 'image/gif';
+            break;
+          case 'jpg':
+          case 'jpeg':
+          default:
+            contentType = 'image/jpeg';
+            break;
+        }
+        
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'paymentmethod',
+            file.path,
+            contentType: http_parser.MediaType.parse(contentType),
+          ),
+        );
+      }
+    }
+
+    // Send request
+    print('Sending request to: ${request.url}');
+    print('Request fields: ${request.fields}');
+    print('Request files count: ${request.files.length}');
+    
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    
+    print('Employee order response status: ${response.statusCode}');
+    print('Employee order response body: ${response.body}');
+
+    final data = jsonDecode(response.body);
+    if (data['success'] == true) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OrderSuccessPage(orderDetails: data['data']),
+          ),
+        );
+      }
+    } else {
+      throw Exception(data['message'] ?? 'Failed to place order');
+    }
+  }
+
+  Future<void> _placeCustomerOrder({required bool isPaidOnline, required String token, required user}) async {
+    // Create multipart request
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('http://192.168.29.96:3000/api/cart/place-order'),
+    );
+
+    // Add headers
+    request.headers.addAll({
+      'Authorization': 'Bearer $token',
+    });
+
+    // Add form fields
+    request.fields.addAll({
+      'paid_online': isPaidOnline.toString(),
+      'authentication': token,
+      'user_id': user.id.toString(),
+      'paymentMethod': isPaidOnline ? 'online' : 'cod',
+    });
+
+    // Add payment screenshot if paid online
+    if (isPaidOnline && _paymentScreenshot != null) {
+      if (kIsWeb) {
+        // Handle web platform
+        final xFile = _paymentScreenshot as XFile;
+        final bytes = await xFile.readAsBytes();
+        request.files.add(
+          http.MultipartFile.fromBytes(
+            'paymentmethod',
+            bytes,
+            filename: xFile.name,
+            contentType: http_parser.MediaType('image', xFile.name.split('.').last),
+          ),
+        );
+      } else {
+        // Handle mobile platforms
+        final file = _paymentScreenshot as File;
+        final extension = file.path.toLowerCase().split('.').last;
+        String contentType = 'image/jpeg';
+        
+        switch (extension) {
+          case 'png':
+            contentType = 'image/png';
+            break;
+          case 'gif':
+            contentType = 'image/gif';
+            break;
+          case 'jpg':
+          case 'jpeg':
+          default:
+            contentType = 'image/jpeg';
+            break;
+        }
+        
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'paymentmethod',
+            file.path,
+            contentType: http_parser.MediaType.parse(contentType),
+          ),
+        );
+      }
+    }
+
+    // Send request
+    print('Sending request to: ${request.url}');
+    print('Request fields: ${request.fields}');
+    print('Request files count: ${request.files.length}');
+    
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    
+    print('Customer order response status: ${response.statusCode}');
+    print('Customer order response body: ${response.body}');
+
+    final data = jsonDecode(response.body);
+    if (data['success'] == true) {
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OrderSuccessPage(orderDetails: data['data']),
+          ),
+        );
+      }
+    } else {
+      throw Exception(data['message'] ?? 'Failed to place order');
     }
   }
 
@@ -181,6 +386,14 @@ class _PaymentPageState extends State<PaymentPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 2,
+            offset: const Offset(0, 1),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -192,35 +405,75 @@ class _PaymentPageState extends State<PaymentPage> {
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 8),
+          const Text(
+            'Please upload a clear image of your payment confirmation',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
           const SizedBox(height: 16),
           if (_paymentScreenshot != null) ...[
             _buildImagePreview(),
             const SizedBox(height: 16),
           ],
-          SizedBox(
+          // Gallery Button
+          Container(
             width: double.infinity,
-            height: 50,
-            child: ElevatedButton(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: ElevatedButton.icon(
               style: ElevatedButton.styleFrom(
-                backgroundColor: _paymentScreenshot == null ? const Color(0xFF9B1B1B) : Colors.grey,
+                backgroundColor: const Color(0xFF9B1B1B),
+                foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
               ),
-              onPressed: _pickImage,
-              child: Text(
-                _paymentScreenshot == null ? 'Select Screenshot' : 'Change Screenshot',
-                style: const TextStyle(
+              onPressed: () => _pickImage(ImageSource.gallery),
+              icon: const Icon(Icons.photo_library, size: 24),
+              label: const Text(
+                'Choose from Gallery',
+                style: TextStyle(
                   fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
           ),
+          // Camera Button (mobile only)
+          if (!kIsWeb)
+            Container(
+              width: double.infinity,
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF9B1B1B),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: const BorderSide(
+                      color: Color(0xFF9B1B1B),
+                      width: 1,
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+                ),
+                onPressed: () => _pickImage(ImageSource.camera),
+                icon: const Icon(Icons.camera_alt, size: 24),
+                label: const Text(
+                  'Take Photo',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ),
           if (_paymentScreenshot != null) ...[
             const SizedBox(height: 16),
-            SizedBox(
+            Container(
               width: double.infinity,
               height: 50,
               child: ElevatedButton(
@@ -229,6 +482,7 @@ class _PaymentPageState extends State<PaymentPage> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
+                  elevation: 0,
                 ),
                 onPressed: _isLoading ? null : () => _placeOrder(isPaidOnline: true),
                 child: _isLoading
@@ -290,6 +544,110 @@ class _PaymentPageState extends State<PaymentPage> {
                 ],
               ),
               const SizedBox(height: 16),
+              
+              // Show retailer info for employees
+              if (_retailerPhone != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: const Color(0xFF9B1B1B).withOpacity(0.3),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF9B1B1B),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.store,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Ordering for Retailer',
+                              style: TextStyle(
+                                color: Color(0xFF9B1B1B),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Phone: $_retailerPhone',
+                              style: const TextStyle(
+                                color: Colors.black87,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Notes section for employees
+              if (_retailerPhone != null) ...[
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Delivery Notes (Optional)',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _notesController,
+                        maxLines: 3,
+                        decoration: InputDecoration(
+                          hintText: 'Add any special delivery instructions...',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: BorderSide(color: Colors.grey.shade300),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: Color(0xFF9B1B1B)),
+                          ),
+                          contentPadding: const EdgeInsets.all(12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
+
               if (!_showImageUpload) ...[
                 Container(
                   width: double.infinity,

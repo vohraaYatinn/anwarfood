@@ -4,7 +4,7 @@ import '../services/auth_service.dart';
 
 class BrandService {
   final AuthService _authService = AuthService();
-  final String baseUrl = 'http://localhost:3000/api';
+  final String baseUrl = 'http://192.168.29.96:3000/api';
 
   Future<List<Map<String, dynamic>>> getBrands() async {
     try {
