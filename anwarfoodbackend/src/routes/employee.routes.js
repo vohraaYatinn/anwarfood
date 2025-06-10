@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const employeeMiddleware = require('../middleware/employee.middleware');
+const { orderPaymentUpload } = require('../middleware/upload.middleware');
 const {
   fetchOrders,
   searchOrders,
@@ -18,7 +19,7 @@ router.use(employeeMiddleware);
 router.get('/orders', fetchOrders);
 router.get('/orders/search', searchOrders);
 router.get('/orders/:orderId', getOrderDetails);
-router.put('/orders/:orderId/status', updateOrderStatus);
+router.put('/orders/:orderId/status', orderPaymentUpload, updateOrderStatus);
 router.post('/place-order', placeOrderForCustomer);
 
 // Retailer Management Routes

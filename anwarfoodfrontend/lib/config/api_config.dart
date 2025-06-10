@@ -96,6 +96,10 @@ class ApiConfig {
   // RETAILER ENDPOINTS
   // =============================================================================
   static String get retailersMyRetailer => '$baseUrl/api/retailers/my-retailer';
+  static String get retailersSearch => '$baseUrl/api/retailers/search';
+  static String get retailersList => '$baseUrl/api/retailers/list';
+  static String retailerDetails(int retailerId) => '$baseUrl/api/retailers/details/$retailerId';
+  static String retailerByPhone(String phone) => '$baseUrl/api/admin/get-retailer-by-phone/$phone';
   
   // =============================================================================
   // BRAND ENDPOINTS

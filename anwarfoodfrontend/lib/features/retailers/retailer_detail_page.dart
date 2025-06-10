@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/retailer_service.dart';
 import 'package:intl/intl.dart';
+import '../../config/api_config.dart';
 
 class RetailerDetailPage extends StatefulWidget {
   const RetailerDetailPage({Key? key}) : super(key: key);
@@ -124,107 +125,7 @@ class _RetailerDetailPageState extends State<RetailerDetailPage> {
             children: [
                           const SizedBox(height: 16),
                           // Retailer Basic Info
-                          Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(12),
-              ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.network(
-                                        _retailerData!['retailer']['RET_PHOTO'] ?? '',
-                                        width: 80,
-                                        height: 80,
-                    fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) => Container(
-                                          width: 80,
-                                          height: 80,
-                                          decoration: BoxDecoration(
-                                            color: Colors.grey.shade200,
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Icon(Icons.store, color: Colors.grey, size: 40),
-                  ),
-                ),
-              ),
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Text(
-                                            _retailerData!['retailer']['RET_NAME'] ?? 'N/A',
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 18,
-                                            ),
-                                          ),
-                                          if (_retailerData!['retailer']['RET_SHOP_NAME'] != null) ...[
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              _retailerData!['retailer']['RET_SHOP_NAME'],
-                                              style: const TextStyle(
-                                                color: Colors.grey,
-                                                fontSize: 14,
-                                              ),
-                                            ),
-                                          ],
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            _retailerData!['retailer']['RET_MOBILE_NO']?.toString() ?? 'N/A',
-                                            style: const TextStyle(
-                                              color: Colors.grey,
-                                              fontSize: 14,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 16),
-                                const Divider(),
-                                const SizedBox(height: 16),
-                                Row(
-                                  children: [
-                                    const Icon(Icons.location_on, color: Colors.grey, size: 18),
-                                    const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                                        '${_retailerData!['retailer']['RET_ADDRESS']}, ${_retailerData!['retailer']['RET_CITY']}, ${_retailerData!['retailer']['RET_STATE']}, ${_retailerData!['retailer']['RET_COUNTRY']} - ${_retailerData!['retailer']['RET_PIN_CODE']}',
-                                        style: const TextStyle(
-                        color: Colors.grey,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-                                if (_retailerData!['retailer']['RET_GST_NO'] != null) ...[
-                                  const SizedBox(height: 8),
-              Row(
-                                    children: [
-                                      const Icon(Icons.receipt, color: Colors.grey, size: 18),
-                                      const SizedBox(width: 8),
-                  Text(
-                                        'GST: ${_retailerData!['retailer']['RET_GST_NO']}',
-                                        style: const TextStyle(
-                                          color: Colors.grey,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+                          _buildRetailerInfo(),
                           const SizedBox(height: 16),
                           // Sales Summary
                           Container(
@@ -388,6 +289,263 @@ class _RetailerDetailPageState extends State<RetailerDetailPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildRetailerInfo() {
+    final retailer = _retailerData?['retailer'];
+    if (retailer == null) return const SizedBox();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Shop name title
+        Text(
+          retailer['RET_SHOP_NAME'] ?? retailer['RET_NAME'] ?? 'Retailer',
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // QR Code section (if available)
+        if (retailer['BARCODE_URL'] != null) ...[
+          Container(
+            width: double.infinity,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.grey.withOpacity(0.1),
+                  spreadRadius: 1,
+                  blurRadius: 10,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 16.0),
+                  child: Text(
+                    'Shop QR Code',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF9B1B1B),
+                    ),
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                        width: 2,
+                      ),
+                    ),
+                    child: Image.network(
+                      '${ApiConfig.baseUrl}/uploads/retailers/qrcode/${retailer['BARCODE_URL']}',
+                      width: 150,
+                      height: 150,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => const Icon(
+                        Icons.qr_code,
+                        size: 150,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16.0),
+                  child: Text(
+                    'Scan to view shop details',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Retailer photo section
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: retailer['RET_PHOTO'] != null
+                ? Image.network(
+                    retailer['RET_PHOTO'].toString().startsWith('http')
+                        ? retailer['RET_PHOTO']
+                        : '${ApiConfig.baseUrl}/uploads/retailers/profiles/${retailer['RET_PHOTO']}',
+                    width: double.infinity,
+                    height: 200,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) =>
+                        Container(
+                          width: double.infinity,
+                          height: 200,
+                          color: Colors.grey.shade200,
+                          child: const Icon(Icons.store, size: 80, color: Colors.grey),
+                        ),
+                  )
+                : Container(
+                    width: double.infinity,
+                    height: 200,
+                    color: Colors.grey.shade200,
+                    child: const Icon(Icons.store, size: 80, color: Colors.grey),
+                  ),
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Retailer details card
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.grey.withOpacity(0.1),
+                spreadRadius: 1,
+                blurRadius: 10,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Retailer name and basic info
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          retailer['RET_NAME'] ?? 'N/A',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        if (retailer['RET_SHOP_NAME'] != null) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            retailer['RET_SHOP_NAME'],
+                            style: const TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 16),
+              
+              // Location
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.location_on, size: 18, color: Color(0xFF9B1B1B)),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${retailer['RET_ADDRESS']}, ${retailer['RET_CITY']}, ${retailer['RET_STATE']}, ${retailer['RET_COUNTRY']} - ${retailer['RET_PIN_CODE']}',
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              
+              // Phone number
+              Row(
+                children: [
+                  const Icon(Icons.phone, size: 18, color: Color(0xFF9B1B1B)),
+                  const SizedBox(width: 8),
+                  Text(
+                    retailer['RET_MOBILE_NO']?.toString() ?? 'N/A',
+                    style: const TextStyle(
+                      color: Colors.black87,
+                      fontSize: 14,
+                    ),
+                  ),
+                ],
+              ),
+              
+              // Email (if available)
+              if (retailer['RET_EMAIL_ID'] != null) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.email, size: 18, color: Color(0xFF9B1B1B)),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        retailer['RET_EMAIL_ID'],
+                        style: const TextStyle(
+                          color: Colors.black87,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              
+              // GST number (if available)
+              if (retailer['RET_GST_NO'] != null && retailer['RET_GST_NO'].toString().isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.receipt, size: 18, color: Color(0xFF9B1B1B)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'GST: ${retailer['RET_GST_NO']}',
+                      style: const TextStyle(
+                        color: Colors.black87,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
     );
   }
 

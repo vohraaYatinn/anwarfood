@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminMiddleware = require('../middleware/admin.middleware');
+const { productImagesUpload } = require('../middleware/upload.middleware');
 const {
   addProduct,
   editProduct,
@@ -18,15 +19,16 @@ const {
   getOrderDetails,
   searchOrders,
   fetchEmployees,
-  fetchEmployeeOrders
+  fetchEmployeeOrders,
+  getRetailerByPhone
 } = require('../controllers/admin.controller');
 
 // Apply admin middleware to all routes
 router.use(adminMiddleware);
 
 // Product Management Routes
-router.post('/add-product', addProduct);
-router.put('/edit-product/:productId', editProduct);
+router.post('/add-product', productImagesUpload, addProduct);
+router.put('/edit-product/:productId', productImagesUpload, editProduct);
 
 // Category Management Routes
 router.post('/add-category', addCategory);
@@ -48,6 +50,7 @@ router.get('/get-all-retailer-list', getAllRetailers);
 router.post('/add-retailer', addRetailer);
 router.put('/edit-retailer/:retailerId', editRetailer);
 router.get('/get-details-single-retailer/:retailerId', getSingleRetailer);
+router.get('/get-retailer-by-phone/:phone', getRetailerByPhone);
 
 // Employee Management Routes
 router.get('/employees', fetchEmployees);

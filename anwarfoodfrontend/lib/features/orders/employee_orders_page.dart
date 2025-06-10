@@ -4,6 +4,7 @@ import '../../services/auth_service.dart';
 import 'package:intl/intl.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../config/api_config.dart';
 
 class EmployeeOrdersPage extends StatefulWidget {
   const EmployeeOrdersPage({Key? key}) : super(key: key);
@@ -24,6 +25,7 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
   final TextEditingController _searchController = TextEditingController();
   bool _isSearching = false;
   List<Map<String, dynamic>> _filteredEmployees = [];
+  bool _showEmployeeList = true; // New flag to control view
 
   @override
   void initState() {
@@ -72,7 +74,7 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://192.168.29.96:3000/api/admin/employees'),
+        Uri.parse('${ApiConfig.baseUrl}/api/admin/employees'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -108,7 +110,7 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.get(
-        Uri.parse('http://192.168.29.96:3000/api/admin/employee-orders/$userId'),
+        Uri.parse('${ApiConfig.baseUrl}/api/admin/employee-orders/$userId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -132,6 +134,22 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
     }
   }
 
+  void _selectEmployee(Map<String, dynamic> employee) {
+    setState(() {
+      _selectedEmployee = employee;
+      _showEmployeeList = false;
+      _searchController.clear();
+      _loadEmployeeOrders(employee['USER_ID']);
+    });
+  }
+
+  void _showEmployeeSelectionView() {
+    setState(() {
+      _showEmployeeList = true;
+      _searchController.clear();
+    });
+  }
+
   String _formatDate(String dateStr) {
     final date = DateTime.parse(dateStr);
     final formatter = DateFormat('HH:mm hrs, d MMM yyyy');
@@ -151,82 +169,77 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
     }
   }
 
-  Widget _buildEmployeeDropdown() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade300),
-      ),
-      child: Column(
-        children: [
-          // Search TextField
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                hintText: 'Search employees...',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
+  Widget _buildEmployeeListView() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Select Employee',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
                 ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: Colors.grey.shade300),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                filled: true,
-                fillColor: Colors.grey.shade50,
               ),
-            ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  hintText: 'Search employees...',
+                  prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  filled: true,
+                  fillColor: Colors.white,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                ),
+              ),
+            ],
           ),
-          // Dropdown items
-          Container(
-            constraints: const BoxConstraints(maxHeight: 300),
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: _filteredEmployees.length,
-              itemBuilder: (context, index) {
-                final employee = _filteredEmployees[index];
-                final isSelected = _selectedEmployee?['USER_ID'] == employee['USER_ID'];
-                
-                return InkWell(
-                  onTap: () {
-                    setState(() {
-                      if (isSelected) {
-                        _selectedEmployee = null;
-                        _orders = [];
-                      } else {
-                        _selectedEmployee = employee;
-                        _loadEmployeeOrders(employee['USER_ID']);
-                      }
-                      _searchController.clear();
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    decoration: BoxDecoration(
-                      color: isSelected ? const Color(0xFF9B1B1B).withOpacity(0.1) : Colors.white,
-                      border: Border(
-                        top: BorderSide(color: Colors.grey.shade200),
-                      ),
-                    ),
+        ),
+        Expanded(
+          child: ListView.separated(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _filteredEmployees.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 8),
+            itemBuilder: (context, index) {
+              final employee = _filteredEmployees[index];
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
+                child: InkWell(
+                  onTap: () => _selectEmployee(employee),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
                         CircleAvatar(
                           backgroundColor: const Color(0xFF9B1B1B).withOpacity(0.1),
+                          radius: 24,
                           child: Text(
                             employee['USERNAME'][0].toUpperCase(),
                             style: const TextStyle(
                               color: Color(0xFF9B1B1B),
                               fontWeight: FontWeight.bold,
+                              fontSize: 18,
                             ),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        const SizedBox(width: 16),
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,32 +254,84 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
                               const SizedBox(height: 4),
                               Text(
                                 employee['EMAIL'],
-                                style: const TextStyle(
-                                  color: Colors.grey,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
                                   fontSize: 14,
                                 ),
                               ),
                               Text(
                                 '+91 ${employee['MOBILE']}',
-                                style: const TextStyle(
-                                  color: Colors.grey,
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
                                   fontSize: 14,
                                 ),
                               ),
                             ],
                           ),
                         ),
-                        if (isSelected)
-                          const Icon(
-                            Icons.check_circle,
-                            color: Color(0xFF9B1B1B),
-                          ),
+                        const Icon(
+                          Icons.chevron_right,
+                          color: Colors.grey,
+                        ),
                       ],
                     ),
                   ),
-                );
-              },
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSelectedEmployeeHeader() {
+    if (_selectedEmployee == null) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: const Color(0xFF9B1B1B).withOpacity(0.1),
+            radius: 24,
+            child: Text(
+              _selectedEmployee!['USERNAME'][0].toUpperCase(),
+              style: const TextStyle(
+                color: Color(0xFF9B1B1B),
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
             ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _selectedEmployee!['USERNAME'],
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _selectedEmployee!['EMAIL'],
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: _showEmployeeSelectionView,
+            icon: const Icon(Icons.edit, color: Color(0xFF9B1B1B)),
+            tooltip: 'Change Employee',
           ),
         ],
       ),
@@ -275,31 +340,44 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
 
   Widget _buildOrdersList() {
     if (_orders.isEmpty) {
-      return const Center(
-        child: Text(
-          'No orders found for this employee',
-          style: TextStyle(
-            color: Colors.grey,
-            fontSize: 16,
-          ),
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.assignment_outlined,
+              size: 64,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No orders found for this employee',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 16,
+              ),
+            ),
+          ],
         ),
       );
     }
 
     return ListView.separated(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
       itemCount: _orders.length,
-      separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.transparent),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final order = _orders[index];
         return GestureDetector(
           onTap: () {
-            Navigator.pushNamed(context, '/order-details', arguments: order);
+            Navigator.pushNamed(context, '/order-details', arguments: order['ORDER_ID']);
           },
           child: Container(
-            color: Colors.white,
-            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -315,10 +393,10 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       decoration: BoxDecoration(
                         color: _getStatusColor(order['ORDER_STATUS']).withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         order['ORDER_STATUS'].toString().toUpperCase(),
@@ -366,7 +444,7 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
                     Text(
                       '₹${order['ORDER_TOTAL']}',
                       style: const TextStyle(
-                        color: Color(0xFFFE6A00),
+                        color: Color(0xFF9B1B1B),
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
                       ),
@@ -424,60 +502,34 @@ class _EmployeeOrdersPageState extends State<EmployeeOrdersPage> {
                       const SizedBox(height: 16),
                       ElevatedButton(
                         onPressed: _loadEmployees,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF9B1B1B),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                         child: const Text('Retry'),
                       ),
                     ],
                   ),
                 )
-              : SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.all(16),
-                        child: Text(
-                          'Select Employee',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
+              : _showEmployeeList
+                  ? _buildEmployeeListView()
+                  : Column(
+                      children: [
+                        _buildSelectedEmployeeHeader(),
+                        if (_isLoadingOrders)
+                          const Expanded(
+                            child: Center(
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else
+                          Expanded(
+                            child: _buildOrdersList(),
                           ),
-                        ),
-                      ),
-                      _buildEmployeeDropdown(),
-                      if (_selectedEmployee != null) ...[
-                        const SizedBox(height: 24),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              Text(
-                                'Orders by ${_selectedEmployee!['USERNAME']}',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              if (_isLoadingOrders)
-                                const Padding(
-                                  padding: EdgeInsets.only(left: 8),
-                                  child: SizedBox(
-                                    width: 16,
-                                    height: 16,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildOrdersList(),
                       ],
-                      const SizedBox(height: 24),
-                    ],
-                  ),
-                ),
+                    ),
     );
   }
 } 

@@ -2,13 +2,25 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../config/api_config.dart';
+import 'auth_service.dart';
 
 class RetailerService {
-  static const String baseUrl = 'http://192.168.29.96:3000/api';
+  final AuthService _authService = AuthService();
 
   Future<String?> _getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('auth_token');
+  }
+  
+  Future<String?> _getUserRole() async {
+    try {
+      final user = await _authService.getUser();
+      return user?.role.toLowerCase();
+    } catch (e) {
+      print('Error getting user role: $e');
+      return null;
+    }
   }
 
   Map<String, String> _getHeaders(String? token) {
@@ -30,7 +42,7 @@ class RetailerService {
         throw Exception('No authentication token found');
       }
 
-      final uri = Uri.parse('$baseUrl/employee/retailers')
+      final uri = Uri.parse('${ApiConfig.baseUrl}/api/employee/retailers')
           .replace(queryParameters: {
         'page': page.toString(),
         'limit': limit.toString(),
@@ -67,7 +79,7 @@ class RetailerService {
     }
   }
 
-  // Search retailers for employee
+  // Search retailers with role-based endpoint
   Future<List<Map<String, dynamic>>> searchRetailers(String query) async {
     try {
       final token = await _getToken();
@@ -75,9 +87,15 @@ class RetailerService {
         throw Exception('No authentication token found');
       }
 
-      final uri = Uri.parse('$baseUrl/employee/retailers/search')
+      final userRole = await _getUserRole();
+      
+      // Use admin endpoint for admin users, employee endpoint for others
+      final uri = Uri.parse(userRole == 'admin' 
+          ? ApiConfig.retailersSearch 
+          : '${ApiConfig.baseUrl}/api/employee/retailers/search')
           .replace(queryParameters: {'query': query});
 
+      print('User role: $userRole');
       print('Searching retailers with query: $query');
       print('Search URL: $uri');
 
@@ -92,7 +110,14 @@ class RetailerService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
-          return (data['data']['retailers'] as List).cast<Map<String, dynamic>>();
+          // Handle different response structures based on role
+          if (userRole == 'admin') {
+            // Admin endpoint returns data directly as array
+            return (data['data'] as List).cast<Map<String, dynamic>>();
+          } else {
+            // Employee endpoint returns data with retailers key
+            return (data['data']['retailers'] as List).cast<Map<String, dynamic>>();
+          }
         } else {
           throw Exception(data['message'] ?? 'Failed to search retailers');
         }
@@ -143,7 +168,7 @@ class RetailerService {
     }
   }
 
-  // Legacy methods for backward compatibility
+  // Get retailer list with role-based endpoint
   Future<Map<String, dynamic>> getRetailerList({
     int page = 1,
     int limit = 5,
@@ -155,13 +180,19 @@ class RetailerService {
         throw Exception('No authentication token found');
       }
 
-      final uri = Uri.parse('$baseUrl/admin/get-all-retailer-list')
+      final userRole = await _getUserRole();
+      
+      // Use admin endpoint for admin users, employee endpoint for others
+      final uri = Uri.parse(userRole == 'admin' 
+          ? ApiConfig.retailersList
+          : '${ApiConfig.baseUrl}/api/employee/retailers')
           .replace(queryParameters: {
         'page': page.toString(),
         'limit': limit.toString(),
         'status': status,
       });
 
+      print('User role: $userRole');
       print('Fetching retailer list from: $uri');
 
       final response = await http.get(
@@ -175,7 +206,24 @@ class RetailerService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
-          return data['data'];
+          // Handle different response structures based on role
+          if (userRole == 'admin') {
+            // Admin endpoint - normalize the response structure
+            return {
+              'retailers': (data['data'] as List).cast<Map<String, dynamic>>(),
+              'pagination': data['pagination'] ?? {
+                'currentPage': 1,
+                'totalPages': 1,
+                'totalCount': (data['data'] as List).length,
+              },
+            };
+          } else {
+            // Employee endpoint returns proper structure
+            return {
+              'retailers': (data['data']['retailers'] as List).cast<Map<String, dynamic>>(),
+              'pagination': data['data']['pagination'] ?? {},
+            };
+          }
         } else {
           throw Exception(data['message'] ?? 'Failed to fetch retailer list');
         }
@@ -199,7 +247,7 @@ class RetailerService {
         throw Exception('No authentication token found');
       }
 
-      final uri = Uri.parse('$baseUrl/retailers/admin/retailer-details/$retailerId');
+      final uri = Uri.parse('${ApiConfig.baseUrl}/api/retailers/admin/retailer-details/$retailerId');
 
       print('Fetching retailer details from: $uri');
 
@@ -227,6 +275,47 @@ class RetailerService {
       throw Exception('No internet connection');
     } catch (e) {
       print('Error in getRetailerDetails: $e');
+      rethrow;
+    }
+  }
+
+  // Get retailer by phone number from QR code
+  Future<Map<String, dynamic>> getRetailerByPhone(String phone) async {
+    try {
+      final token = await _getToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final uri = Uri.parse(ApiConfig.retailerByPhone(phone));
+
+      print('Fetching retailer by phone: $phone');
+      print('API URL: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: _getHeaders(token),
+      );
+
+      print('Retailer by phone response status: ${response.statusCode}');
+      print('Retailer by phone response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return data['data'];
+        } else {
+          throw Exception(data['message'] ?? 'Failed to fetch retailer by phone');
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to fetch retailer by phone. Status: ${response.statusCode}');
+      }
+    } on SocketException {
+      throw Exception('No internet connection');
+    } catch (e) {
+      print('Error in getRetailerByPhone: $e');
       rethrow;
     }
   }

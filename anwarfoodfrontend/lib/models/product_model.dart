@@ -21,6 +21,7 @@ class Product {
   final String? prodImage3;
   final int? prodCatId;
   final String? isBarcodeAvailable;
+  final String? barcodes;
 
   Product({
     required this.id,
@@ -45,6 +46,7 @@ class Product {
     this.prodImage3,
     this.prodCatId,
     this.isBarcodeAvailable,
+    this.barcodes,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -71,6 +73,7 @@ class Product {
       prodImage3: json['PROD_IMAGE_3'],
       prodCatId: json['PROD_CAT_ID'],
       isBarcodeAvailable: json['IS_BARCODE_AVAILABLE'],
+      barcodes: json['barcodes'],
     );
   }
 
@@ -98,6 +101,7 @@ class Product {
       'PROD_IMAGE_3': prodImage3,
       'PROD_CAT_ID': prodCatId,
       'IS_BARCODE_AVAILABLE': isBarcodeAvailable,
+      'barcodes': barcodes,
     };
   }
 } 

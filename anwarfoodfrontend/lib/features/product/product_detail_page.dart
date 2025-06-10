@@ -4,6 +4,7 @@ import '../../models/user_model.dart';
 import '../../services/product_service.dart';
 import '../../services/cart_service.dart';
 import '../../services/auth_service.dart';
+import '../../config/api_config.dart';
 import 'dart:async';
 
 class ProductDetailPage extends StatefulWidget {
@@ -28,6 +29,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   bool _isInitialized = false;
   int _cartCount = 0;
   Timer? _cartCountTimer;
+  int _selectedImageIndex = 0; // Track which image is currently displayed
 
   @override
   void initState() {
@@ -70,6 +72,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       setState(() {
         _product = product;
         _user = user;
+        _selectedImageIndex = 0; // Reset to first image when loading new product
         if (product.units != null && product.units.isNotEmpty) {
           final firstUnit = product.units[0];
           _selectedUnitId = firstUnit['PU_ID'] is int 
@@ -336,6 +339,122 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     );
   }
 
+  List<String> _getProductImages() {
+    if (_product == null) return [];
+    
+    List<String> images = [];
+    
+    // Add main image if exists
+    if (_product!.image1.isNotEmpty) {
+      images.add(_product!.image1);
+    }
+    
+    // Add second image if exists
+    if (_product!.prodImage2 != null && _product!.prodImage2!.isNotEmpty) {
+      images.add(_product!.prodImage2!);
+    }
+    
+    // Add third image if exists
+    if (_product!.prodImage3 != null && _product!.prodImage3!.isNotEmpty) {
+      images.add(_product!.prodImage3!);
+    }
+    
+    return images;
+  }
+
+  Widget _buildImageGallery() {
+    final images = _getProductImages();
+    
+    if (images.isEmpty) {
+      return Center(
+        child: Container(
+          width: 180,
+          height: 180,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: const Icon(Icons.image_not_supported, size: 64, color: Colors.grey),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // Main Image
+        Container(
+          width: double.infinity,
+          height: 250,
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.network(
+              '${ApiConfig.baseUrl}/uploads/products/${images[_selectedImageIndex]}',
+              fit: BoxFit.contain,
+              errorBuilder: (context, error, stackTrace) =>
+                  const Icon(Icons.image_not_supported, size: 64, color: Colors.grey),
+            ),
+          ),
+        ),
+        
+        // Thumbnail Images (only show if there are multiple images)
+        if (images.length > 1) ...[
+          const SizedBox(height: 16),
+          Container(
+            height: 80,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Expanded(
+                  child: ListView.builder(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: images.length,
+                    itemBuilder: (context, index) {
+                      final isSelected = index == _selectedImageIndex;
+                      return GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedImageIndex = index;
+                          });
+                        },
+                        child: Container(
+                          width: 70,
+                          height: 70,
+                          margin: const EdgeInsets.only(right: 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: isSelected ? const Color(0xFF9B1B1B) : Colors.grey.shade300,
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              '${ApiConfig.baseUrl}/uploads/products/${images[index]}',
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(Icons.image_not_supported, size: 24, color: Colors.grey),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -370,22 +489,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 8),
-                            Center(
-                              child: Container(
-                                width: 180,
-                                height: 180,
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Image.network(
-                                  _product!.image1,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.image_not_supported, size: 38, color: Colors.grey),
-                                ),
-                              ),
-                            ),
+                            _buildImageGallery(),
                             const SizedBox(height: 16),
                             Text(
                               _product!.name,

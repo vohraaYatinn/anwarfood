@@ -52,7 +52,7 @@ const retailerBarcodeStorage = multer.diskStorage({
 });
 
 // Storage configuration for product images
-const productStorage = multer.diskStorage({
+const productImageStorage = multer.diskStorage({
   destination: (req, file, cb) => {
     cb(null, './uploads/products');
   },
@@ -97,13 +97,17 @@ const uploadRetailerBarcode = multer({
 }).single('barcodeImage'); // Field name: barcodeImage
 
 const uploadProductImages = multer({
-  storage: productStorage,
+  storage: productImageStorage,
   fileFilter: imageFilter,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit per file
     files: 3 // Maximum 3 product images
   }
-}).array('productImages', 3); // Field name: productImages, max 3 files
+}).fields([
+  { name: 'prodImage1', maxCount: 1 },
+  { name: 'prodImage2', maxCount: 1 },
+  { name: 'prodImage3', maxCount: 1 }
+]);
 
 const uploadOrderPayment = multer({
   storage: orderPaymentStorage,
@@ -112,7 +116,7 @@ const uploadOrderPayment = multer({
     fileSize: 5 * 1024 * 1024, // 5MB limit
     files: 1 // Only one payment image
   }
-  }).single('paymentmethod'); // Field name: paymentmethod (to match frontend form field)
+  }).single('paymentImage'); // Field name: paymentImage
 
 // Middleware wrapper functions with error handling
 const retailerProfileUpload = (req, res, next) => {
@@ -201,7 +205,7 @@ const productImagesUpload = (req, res, next) => {
       if (err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({
           success: false,
-          message: 'File size too large. Maximum size is 5MB per file.'
+          message: 'File size too large. Maximum size is 5MB per image.'
         });
       }
       if (err.code === 'LIMIT_FILE_COUNT') {
@@ -222,13 +226,12 @@ const productImagesUpload = (req, res, next) => {
     }
     
     // Add file paths to request object for database storage
-    if (req.files && req.files.length > 0) {
-      req.uploadedFiles = req.files.map(file => ({
-        path: file.path,
-        filename: file.filename,
-        originalname: file.originalname,
-        size: file.size
-      }));
+    if (req.files) {
+      req.uploadedFiles = {
+        prodImage1: req.files.prodImage1 ? req.files.prodImage1[0].filename : null,
+        prodImage2: req.files.prodImage2 ? req.files.prodImage2[0].filename : null,
+        prodImage3: req.files.prodImage3 ? req.files.prodImage3[0].filename : null
+      };
     }
     
     next();

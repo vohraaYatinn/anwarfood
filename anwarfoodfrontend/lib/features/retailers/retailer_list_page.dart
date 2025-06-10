@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../../services/retailer_service.dart';
 
 class RetailerListPage extends StatefulWidget {
@@ -124,6 +126,73 @@ class _RetailerListPageState extends State<RetailerListPage> {
     }
   }
 
+  Future<void> _openQRScanner() async {
+    // Check camera permission
+    final status = await Permission.camera.status;
+    if (!status.isGranted) {
+      final result = await Permission.camera.request();
+      if (!result.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Camera permission is required for QR code scanning'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Navigate to QR scanner
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QRScannerPage(
+          onQRScanned: _getRetailerByQR,
+          title: 'Scan Retailer QR Code',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getRetailerByQR(String qrValue) async {
+    try {
+      print('Scanning QR code: $qrValue');
+      
+      // Get retailer by QR code (which contains phone number)
+      final retailerData = await _retailerService.getRetailerByPhone(qrValue);
+      
+      print('Retailer found: ${retailerData['RET_NAME']}');
+      
+      if (mounted) {
+        // Navigate to retailer detail page
+        Navigator.pushNamed(
+          context,
+          '/retailer-detail',
+          arguments: retailerData['RET_ID'],
+        );
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Retailer found: ${retailerData['RET_NAME']}'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error in _getRetailerByQR: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -157,15 +226,24 @@ class _RetailerListPageState extends State<RetailerListPage> {
                     decoration: InputDecoration(
                       hintText: 'Search by name, shop, or mobile',
                       prefixIcon: const Icon(Icons.search),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
+                      suffixIcon: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.qr_code_scanner),
+                            onPressed: _openQRScanner,
+                            tooltip: 'Scan QR Code',
+                          ),
+                          if (_searchController.text.isNotEmpty)
+                            IconButton(
                               icon: const Icon(Icons.clear),
                               onPressed: () {
                                 _searchController.clear();
                                 _onSearchChanged();
                               },
-                            )
-                          : null,
+                            ),
+                        ],
+                      ),
                       filled: true,
                       fillColor: Colors.white,
                       contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
@@ -244,21 +322,33 @@ class _RetailerListPageState extends State<RetailerListPage> {
                                     children: [
                                       ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          retailer['RET_PHOTO'] ?? '',
-                                          width: 60,
-                                          height: 60,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) => Container(
-                                            width: 60,
-                                            height: 60,
-                                            decoration: BoxDecoration(
-                                              color: Colors.grey.shade200,
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Icon(Icons.store, color: Colors.grey),
-                                          ),
-                                        ),
+                                        child: retailer['RET_PHOTO'] != null && retailer['RET_PHOTO'].toString().isNotEmpty
+                                            ? Image.network(
+                                                retailer['RET_PHOTO'].toString().startsWith('http')
+                                                    ? retailer['RET_PHOTO']
+                                                    : 'http://192.168.29.96:3000/uploads/retailers/profiles/${retailer['RET_PHOTO']}',
+                                                width: 60,
+                                                height: 60,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stackTrace) => Container(
+                                                  width: 60,
+                                                  height: 60,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey.shade200,
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: const Icon(Icons.store, color: Colors.grey),
+                                                ),
+                                              )
+                                            : Container(
+                                                width: 60,
+                                                height: 60,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey.shade200,
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: const Icon(Icons.store, color: Colors.grey),
+                                              ),
                                       ),
                                       const SizedBox(width: 12),
                                       Expanded(
@@ -358,6 +448,287 @@ class _RetailerListPageState extends State<RetailerListPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class QRScannerPage extends StatefulWidget {
+  final Future<void> Function(String) onQRScanned;
+  final String title;
+  
+  const QRScannerPage({
+    Key? key,
+    required this.onQRScanned,
+    this.title = 'Scan QR Code',
+  }) : super(key: key);
+
+  @override
+  _QRScannerPageState createState() => _QRScannerPageState();
+}
+
+class _QRScannerPageState extends State<QRScannerPage> {
+  MobileScannerController cameraController = MobileScannerController();
+  bool isProcessing = false;
+
+  @override
+  void dispose() {
+    cameraController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.torchState,
+              builder: (context, state, child) {
+                switch (state) {
+                  case TorchState.off:
+                    return const Icon(Icons.flash_off, color: Colors.white);
+                  case TorchState.on:
+                    return const Icon(Icons.flash_on, color: Colors.yellow);
+                }
+              },
+            ),
+            onPressed: () => cameraController.toggleTorch(),
+          ),
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.cameraFacingState,
+              builder: (context, state, child) {
+                return const Icon(Icons.camera_front, color: Colors.white);
+              },
+            ),
+            onPressed: () => cameraController.switchCamera(),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: cameraController,
+            onDetect: (capture) async {
+              if (!isProcessing) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty) {
+                  final barcode = barcodes.first;
+                  if (barcode.rawValue != null) {
+                    setState(() {
+                      isProcessing = true;
+                    });
+                    
+                    try {
+                      print('QR Code detected: ${barcode.rawValue!}');
+                      
+                      // Close the scanner first
+                      Navigator.pop(context);
+                      
+                      // Then call the callback function
+                      await widget.onQRScanned(barcode.rawValue!);
+                    } catch (e) {
+                      print('Error processing QR code: $e');
+                      // Reset processing state on error
+                      if (mounted) {
+                        setState(() {
+                          isProcessing = false;
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            },
+          ),
+          // Overlay with scanning area
+          Container(
+            decoration: ShapeDecoration(
+              shape: ScannerOverlayShape(
+                borderColor: const Color(0xFF9B1B1B),
+                borderRadius: 10,
+                borderLength: 30,
+                borderWidth: 4,
+                cutOutSize: 250,
+              ),
+            ),
+          ),
+          // Instructions
+          Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                isProcessing 
+                    ? 'Processing...' 
+                    : 'Place the QR code inside the frame to scan',
+                style: TextStyle(
+                  color: isProcessing ? Colors.yellow : Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class ScannerOverlayShape extends ShapeBorder {
+  const ScannerOverlayShape({
+    this.borderColor = Colors.red,
+    this.borderWidth = 3.0,
+    this.overlayColor = const Color.fromRGBO(0, 0, 0, 80),
+    this.borderRadius = 0,
+    this.borderLength = 40,
+    double? cutOutSize,
+    double? cutOutWidth,
+    double? cutOutHeight,
+  })  : cutOutWidth = cutOutWidth ?? cutOutSize ?? 250,
+        cutOutHeight = cutOutHeight ?? cutOutSize ?? 250;
+
+  final Color borderColor;
+  final double borderWidth;
+  final Color overlayColor;
+  final double borderRadius;
+  final double borderLength;
+  final double cutOutWidth;
+  final double cutOutHeight;
+
+  @override
+  EdgeInsetsGeometry get dimensions => const EdgeInsets.all(10);
+
+  @override
+  Path getInnerPath(Rect rect, {TextDirection? textDirection}) {
+    return Path()
+      ..fillType = PathFillType.evenOdd
+      ..addPath(getOuterPath(rect), Offset.zero);
+  }
+
+  @override
+  Path getOuterPath(Rect rect, {TextDirection? textDirection}) {
+    Path getLeftTopPath(Rect rect) {
+      return Path()
+        ..moveTo(rect.left, rect.bottom)
+        ..lineTo(rect.left, rect.top + borderRadius)
+        ..quadraticBezierTo(rect.left, rect.top, rect.left + borderRadius, rect.top)
+        ..lineTo(rect.right, rect.top);
+    }
+
+    return getLeftTopPath(rect)
+      ..lineTo(rect.right, rect.bottom)
+      ..lineTo(rect.left, rect.bottom)
+      ..lineTo(rect.left, rect.top);
+  }
+
+  @override
+  void paint(Canvas canvas, Rect rect, {TextDirection? textDirection}) {
+    final width = rect.width;
+    final borderWidthSize = width / 2;
+    final height = rect.height;
+    final borderHeightSize = height / 2;
+    final cutOutWidth =
+        this.cutOutWidth < width ? this.cutOutWidth : width - borderWidth;
+    final cutOutHeight =
+        this.cutOutHeight < height ? this.cutOutHeight : height - borderWidth;
+
+    final backgroundPaint = Paint()
+      ..color = overlayColor
+      ..style = PaintingStyle.fill;
+
+    final borderPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth;
+
+    final cutOutRect = Rect.fromLTWH(
+      rect.left + (width - cutOutWidth) / 2 + borderWidth,
+      rect.top + (height - cutOutHeight) / 2 + borderWidth,
+      cutOutWidth - borderWidth * 2,
+      cutOutHeight - borderWidth * 2,
+    );
+
+    canvas
+      ..drawPath(
+          Path.combine(
+            PathOperation.difference,
+            Path()..addRect(rect),
+            Path()
+              ..addRRect(RRect.fromRectAndRadius(
+                  cutOutRect, Radius.circular(borderRadius)))
+              ..close(),
+          ),
+          backgroundPaint)
+      ..drawRRect(
+          RRect.fromRectAndRadius(cutOutRect, Radius.circular(borderRadius)),
+          borderPaint);
+
+    // Draw corner borders
+    final cornerPaint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = borderWidth;
+
+    // Top left corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.left - borderWidth, cutOutRect.top)
+          ..lineTo(cutOutRect.left - borderWidth, cutOutRect.top - borderLength)
+          ..moveTo(cutOutRect.left, cutOutRect.top - borderWidth)
+          ..lineTo(cutOutRect.left + borderLength, cutOutRect.top - borderWidth),
+        cornerPaint);
+
+    // Top right corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.right + borderWidth, cutOutRect.top)
+          ..lineTo(cutOutRect.right + borderWidth, cutOutRect.top - borderLength)
+          ..moveTo(cutOutRect.right, cutOutRect.top - borderWidth)
+          ..lineTo(cutOutRect.right - borderLength, cutOutRect.top - borderWidth),
+        cornerPaint);
+
+    // Bottom left corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.left - borderWidth, cutOutRect.bottom)
+          ..lineTo(cutOutRect.left - borderWidth, cutOutRect.bottom + borderLength)
+          ..moveTo(cutOutRect.left, cutOutRect.bottom + borderWidth)
+          ..lineTo(cutOutRect.left + borderLength, cutOutRect.bottom + borderWidth),
+        cornerPaint);
+
+    // Bottom right corner
+    canvas.drawPath(
+        Path()
+          ..moveTo(cutOutRect.right + borderWidth, cutOutRect.bottom)
+          ..lineTo(cutOutRect.right + borderWidth, cutOutRect.bottom + borderLength)
+          ..moveTo(cutOutRect.right, cutOutRect.bottom + borderWidth)
+          ..lineTo(cutOutRect.right - borderLength, cutOutRect.bottom + borderWidth),
+        cornerPaint);
+  }
+
+  @override
+  ShapeBorder scale(double t) {
+    return ScannerOverlayShape(
+      borderColor: borderColor,
+      borderWidth: borderWidth,
+      overlayColor: overlayColor,
     );
   }
 } 

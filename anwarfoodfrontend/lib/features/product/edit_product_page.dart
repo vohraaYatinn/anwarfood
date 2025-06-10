@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'dart:io';
 import '../../models/product_model.dart';
 import '../../models/category_model.dart';
 import '../../models/product_unit.dart';
 import '../../services/product_service.dart';
 import '../../services/category_service.dart';
+import 'dart:convert';
+import '../../config/api_config.dart';
 
 class EditProductPage extends StatefulWidget {
   const EditProductPage({Key? key}) : super(key: key);
@@ -32,9 +37,15 @@ class _EditProductPageState extends State<EditProductPage> {
   final _mfgDateController = TextEditingController();
   final _expiryDateController = TextEditingController();
   final _mfgByController = TextEditingController();
-  final _image1Controller = TextEditingController();
-  final _image2Controller = TextEditingController();
-  final _image3Controller = TextEditingController();
+  final ImagePicker _imagePicker = ImagePicker();
+
+  // Image files instead of URL controllers
+  File? _prodImage1;
+  File? _prodImage2;
+  File? _prodImage3;
+  String? _existingImage1;
+  String? _existingImage2;
+  String? _existingImage3;
 
   // Add controllers for the unit form
   final _unitNameController = TextEditingController();
@@ -54,6 +65,14 @@ class _EditProductPageState extends State<EditProductPage> {
 
   // Add this list to store product units
   List<ProductUnit> _productUnits = [];
+
+  // Barcodes
+  List<String> _barcodes = [];
+  final _barcodeController = TextEditingController();
+  bool _isScanning = false;
+
+  // Image removal tracking
+  List<int> _imagesToRemove = [];
 
   @override
   void didChangeDependencies() {
@@ -128,10 +147,21 @@ class _EditProductPageState extends State<EditProductPage> {
     _mfgDateController.text = _formatDate(_product!.prodMfgDate);
     _expiryDateController.text = _formatDate(_product!.prodExpiryDate);
     _mfgByController.text = _product!.prodMfgBy ?? '';
-    _image1Controller.text = _product!.image1;
-    _image2Controller.text = _product!.prodImage2 ?? '';
-    _image3Controller.text = _product!.prodImage3 ?? '';
+    _existingImage1 = _product!.image1;
+    _existingImage2 = _product!.prodImage2;
+    _existingImage3 = _product!.prodImage3;
     _isBarcodeAvailable = _product!.isBarcodeAvailable ?? 'N';
+    
+    // Initialize barcodes from product data
+    try {
+      if (_product!.barcodes != null && _product!.barcodes!.isNotEmpty) {
+        // barcodes come as comma-separated string from the API
+        _barcodes = _product!.barcodes!.split(',').where((b) => b.trim().isNotEmpty).toList();
+      }
+    } catch (e) {
+      print('Error loading barcodes: $e');
+      _barcodes = [];
+    }
     
     // Initialize product units from the existing product
     try {
@@ -466,27 +496,38 @@ class _EditProductPageState extends State<EditProductPage> {
         'prodDesc': _descController.text.trim(),
         'prodMrp': double.tryParse(_mrpController.text) ?? 0.0,
         'prodSp': double.tryParse(_spController.text) ?? 0.0,
-        'prodReorderLevel': _reorderLevelController.text.trim(),
-        'prodQoh': _qohController.text.trim(),
+        'prodReorderLevel': int.tryParse(_reorderLevelController.text) ?? 0,
+        'prodQoh': int.tryParse(_qohController.text) ?? 0,
         'prodHsnCode': _hsnCodeController.text.trim(),
-        'prodCgst': _cgstController.text.trim(),
-        'prodIgst': _igstController.text.trim(),
-        'prodSgst': _sgstController.text.trim(),
+        'prodCgst': double.tryParse(_cgstController.text) ?? 0.0,
+        'prodIgst': double.tryParse(_igstController.text) ?? 0.0,
+        'prodSgst': double.tryParse(_sgstController.text) ?? 0.0,
         'prodMfgDate': _mfgDateController.text.isEmpty ? null : _mfgDateController.text,
         'prodExpiryDate': _expiryDateController.text.isEmpty ? null : _expiryDateController.text,
         'prodMfgBy': _mfgByController.text.trim(),
-        'prodImage1': _image1Controller.text.trim(),
-        'prodImage2': _image2Controller.text.trim(),
-        'prodImage3': _image3Controller.text.trim(),
         'prodCatId': _selectedCategoryId,
         'isBarcodeAvailable': _isBarcodeAvailable,
-        'productUnits': formattedUnits,
+        'productUnits': jsonEncode(formattedUnits),
+        'barcodes': jsonEncode(_barcodes),
       };
+
+      // Create files map for new images
+      final Map<String, File> files = {};
+      if (_prodImage1 != null) files['prodImage1'] = _prodImage1!;
+      if (_prodImage2 != null) files['prodImage2'] = _prodImage2!;
+      if (_prodImage3 != null) files['prodImage3'] = _prodImage3!;
 
       print('Sending product data to API:');
       print(productData);
+      print('Files: ${files.keys.toList()}');
+      print('Images to remove: $_imagesToRemove');
 
-      final result = await _productService.updateProduct(_product!.id, productData);
+      final result = await _productService.updateProductWithImages(
+        _product!.id, 
+        productData, 
+        files,
+        removeImages: _imagesToRemove,
+      );
       print('API Response:');
       print(result);
       
@@ -547,12 +588,10 @@ class _EditProductPageState extends State<EditProductPage> {
     _mfgDateController.dispose();
     _expiryDateController.dispose();
     _mfgByController.dispose();
-    _image1Controller.dispose();
-    _image2Controller.dispose();
-    _image3Controller.dispose();
     _unitNameController.dispose();
     _unitValueController.dispose();
     _unitRateController.dispose();
+    _barcodeController.dispose();
     super.dispose();
   }
 
@@ -651,6 +690,599 @@ class _EditProductPageState extends State<EditProductPage> {
       final formattedDate = '${picked.year}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
       controller.text = formattedDate;
     }
+  }
+
+  Future<void> _pickImage(int imageNumber) async {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Select Image Source',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () async {
+                      Navigator.pop(context);
+                      try {
+                        final XFile? image = await _imagePicker.pickImage(
+                          source: ImageSource.camera,
+                          imageQuality: 85,
+                          maxWidth: 1920,
+                          maxHeight: 1080,
+                        );
+                        if (image != null) {
+                          final extension = image.path.split('.').last.toLowerCase();
+                          if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+                            setState(() {
+                              switch (imageNumber) {
+                                case 1:
+                                  _prodImage1 = File(image.path);
+                                  break;
+                                case 2:
+                                  _prodImage2 = File(image.path);
+                                  break;
+                                case 3:
+                                  _prodImage3 = File(image.path);
+                                  break;
+                              }
+                            });
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please select a valid image file (jpg, png, gif, webp)'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error selecting image: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.camera_alt,
+                            size: 40,
+                            color: Color(0xFF9B1B1B),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Camera',
+                            style: TextStyle(
+                              color: Color(0xFF9B1B1B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: GestureDetector(
+                    onTap: () async {
+                      Navigator.pop(context);
+                      try {
+                        final XFile? image = await _imagePicker.pickImage(
+                          source: ImageSource.gallery,
+                          imageQuality: 85,
+                          maxWidth: 1920,
+                          maxHeight: 1080,
+                        );
+                        if (image != null) {
+                          final extension = image.path.split('.').last.toLowerCase();
+                          if (['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
+                            setState(() {
+                              switch (imageNumber) {
+                                case 1:
+                                  _prodImage1 = File(image.path);
+                                  break;
+                                case 2:
+                                  _prodImage2 = File(image.path);
+                                  break;
+                                case 3:
+                                  _prodImage3 = File(image.path);
+                                  break;
+                              }
+                            });
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please select a valid image file (jpg, png, gif, webp)'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Error selecting image: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Column(
+                        children: [
+                          Icon(
+                            Icons.photo_library,
+                            size: 40,
+                            color: Color(0xFF9B1B1B),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'Gallery',
+                            style: TextStyle(
+                              color: Color(0xFF9B1B1B),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImagePicker(String label, File? imageFile, String? existingImageUrl, int imageNumber, {bool required = false}) {
+    final bool hasNewImage = imageFile != null;
+    final bool hasExistingImage = existingImageUrl != null && existingImageUrl.isNotEmpty && !_imagesToRemove.contains(imageNumber);
+    final bool hasAnyImage = hasNewImage || hasExistingImage;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label + (required ? ' *' : ''),
+          style: const TextStyle(
+            fontWeight: FontWeight.w500,
+            fontSize: 16,
+            color: Colors.black87,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 120,
+          width: double.infinity,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey.shade300),
+          ),
+          child: hasAnyImage
+              ? Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: hasNewImage
+                          ? Image.file(
+                              imageFile!,
+                              width: double.infinity,
+                              height: 120,
+                              fit: BoxFit.cover,
+                            )
+                          : Image.network(
+                              '${ApiConfig.baseUrl}/uploads/products/$existingImageUrl',
+                              width: double.infinity,
+                              height: 120,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  color: Colors.grey.shade200,
+                                  child: const Icon(Icons.broken_image, size: 40, color: Colors.grey),
+                                );
+                              },
+                            ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (hasExistingImage && !hasNewImage)
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _imagesToRemove.add(imageNumber);
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.orange,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.delete,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 4),
+                          GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                switch (imageNumber) {
+                                  case 1:
+                                    _prodImage1 = null;
+                                    break;
+                                  case 2:
+                                    _prodImage2 = null;
+                                    break;
+                                  case 3:
+                                    _prodImage3 = null;
+                                    break;
+                                }
+                                if (!hasNewImage) {
+                                  _imagesToRemove.remove(imageNumber);
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: const BoxDecoration(
+                                color: Colors.red,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: GestureDetector(
+                        onTap: () => _pickImage(imageNumber),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF9B1B1B),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: const Icon(
+                            Icons.edit,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+              : GestureDetector(
+                  onTap: () => _pickImage(imageNumber),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.add_photo_alternate,
+                        size: 40,
+                        color: Colors.grey.shade400,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Tap to add image',
+                        style: TextStyle(
+                          color: Colors.grey.shade600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
+
+  void _addBarcode() {
+    if (_barcodeController.text.trim().isNotEmpty) {
+      final barcode = _barcodeController.text.trim();
+      if (!_barcodes.contains(barcode)) {
+        setState(() {
+          _barcodes.add(barcode);
+          _barcodeController.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Barcode "$barcode" added successfully'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This barcode is already added'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _scanBarcode() async {
+    setState(() {
+      _isScanning = false;
+    });
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Container(
+          height: 400,
+          child: Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF9B1B1B),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Text(
+                        'Scan Barcode',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () {
+                        setState(() {
+                          _isScanning = false;
+                        });
+                        Navigator.pop(context);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+                  child: MobileScanner(
+                    onDetect: (capture) {
+                      if (_isScanning) return;
+                      
+                      final List<Barcode> barcodes = capture.barcodes;
+                      for (final barcode in barcodes) {
+                        if (barcode.rawValue != null && barcode.rawValue!.isNotEmpty) {
+                          final scannedValue = barcode.rawValue!;
+                          
+                          setState(() {
+                            _isScanning = true;
+                          });
+                          
+                          Navigator.of(context).pop();
+                          
+                          if (!_barcodes.contains(scannedValue)) {
+                            setState(() {
+                              _barcodes.add(scannedValue);
+                              _isScanning = false;
+                            });
+                            
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Barcode "$scannedValue" scanned and added successfully'),
+                                  backgroundColor: Colors.green,
+                                  duration: const Duration(seconds: 3),
+                                ),
+                              );
+                            }
+                          } else {
+                            setState(() {
+                              _isScanning = false;
+                            });
+                            
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('This barcode is already added'),
+                                  backgroundColor: Colors.orange,
+                                  duration: Duration(seconds: 2),
+                                ),
+                              );
+                            }
+                          }
+                          break;
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                child: const Text(
+                  'Point your camera at a barcode to scan',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBarcodesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Barcodes',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF9B1B1B),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: _buildTextField(
+                label: 'Barcode',
+                controller: _barcodeController,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9B1B1B),
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _addBarcode,
+              child: const Icon(
+                Icons.add,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green,
+                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onPressed: _scanBarcode,
+              child: const Icon(
+                Icons.qr_code_scanner,
+                color: Colors.white,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        if (_barcodes.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Center(
+              child: Text(
+                'No barcodes added yet. Use the scanner or add manually.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _barcodes.map((barcode) => Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: const Color(0xFF9B1B1B).withOpacity(0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.qr_code,
+                    size: 16,
+                    color: const Color(0xFF9B1B1B),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(
+                    barcode,
+                    style: const TextStyle(
+                      color: Color(0xFF9B1B1B),
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _barcodes.remove(barcode);
+                      });
+                    },
+                    child: const Icon(
+                      Icons.close,
+                      size: 16,
+                      color: Color(0xFF9B1B1B),
+                    ),
+                  ),
+                ],
+              ),
+            )).toList(),
+          ),
+      ],
+    );
   }
 
   @override
@@ -955,7 +1587,7 @@ class _EditProductPageState extends State<EditProductPage> {
                           ),
                           const SizedBox(height: 24),
 
-                          // Images Section
+                          // Product Images Section
                           const Text(
                             'Product Images',
                             style: TextStyle(
@@ -965,21 +1597,11 @@ class _EditProductPageState extends State<EditProductPage> {
                             ),
                           ),
                           const SizedBox(height: 16),
-                          _buildTextField(
-                            label: 'Image 1 URL *',
-                            controller: _image1Controller,
-                            validator: (value) => value?.isEmpty == true ? 'At least one image is required' : null,
-                          ),
+                          _buildImagePicker('Product Image 1', _prodImage1, _existingImage1, 1, required: true),
                           const SizedBox(height: 16),
-                          _buildTextField(
-                            label: 'Image 2 URL',
-                            controller: _image2Controller,
-                          ),
+                          _buildImagePicker('Product Image 2', _prodImage2, _existingImage2, 2),
                           const SizedBox(height: 16),
-                          _buildTextField(
-                            label: 'Image 3 URL',
-                            controller: _image3Controller,
-                          ),
+                          _buildImagePicker('Product Image 3', _prodImage3, _existingImage3, 3),
                           const SizedBox(height: 24),
 
                           // Barcode Section
@@ -1005,10 +1627,13 @@ class _EditProductPageState extends State<EditProductPage> {
                               });
                             },
                           ),
-                          const SizedBox(height: 32),
+                          // Barcodes Section
+                          _buildBarcodesSection(),
+                          const SizedBox(height: 24),
 
                           // Product Units Section
                           _buildUnitsList(),
+                          const SizedBox(height: 32),
 
                           // Submit Button
                           SizedBox(

@@ -450,8 +450,11 @@ class _ProductListPageState extends State<ProductListPage> {
 
   Future<void> _getProductByBarcode(String barcode) async {
     try {
+      print('Scanning barcode: $barcode');
       final token = await _authService.getToken();
       if (token == null) throw Exception('No authentication token found');
+      
+      print('Making API call to: ${ApiConfig.productsGetByBarcode}');
       
       // Get product by barcode
       final response = await http.post(
@@ -465,40 +468,54 @@ class _ProductListPageState extends State<ProductListPage> {
         }),
       );
 
+      print('API Response Status: ${response.statusCode}');
+      print('API Response Body: ${response.body}');
+
       final data = jsonDecode(response.body);
       
       if (data['success'] == true) {
-        // Navigate to product detail page
-        Navigator.pushNamed(
-          context,
-          '/product-detail',
-          arguments: data['data']['productId'],
-        );
+        final productId = data['data']['productId'];
+        print('Product found, navigating to product ID: $productId');
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(data['message'] ?? 'Product found successfully'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 1),
-          ),
-        );
+        // Navigate to product detail page
+        if (mounted) {
+          Navigator.pushNamed(
+            context,
+            '/product-detail',
+            arguments: productId,
+          );
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['message'] ?? 'Product found successfully'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
       } else {
+        print('Product not found: ${data['message']}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['message'] ?? 'Product not found'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error in _getProductByBarcode: $e');
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(data['message'] ?? 'Product not found'),
+            content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 2),
           ),
         );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 2),
-        ),
-      );
     }
   }
 
@@ -666,7 +683,7 @@ class _ProductListPageState extends State<ProductListPage> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Image.network(
-                                        prod.image1,
+                                        '${ApiConfig.baseUrl}/uploads/products/${prod.image1}',
                                         width: 70,
                                         height: 70,
                                         fit: BoxFit.contain,
@@ -784,7 +801,7 @@ class _ProductListPageState extends State<ProductListPage> {
                                           ? ClipRRect(
                                               borderRadius: BorderRadius.circular(8),
                                               child: Image.network(
-                                                '${prod['PROD_IMAGE_1']}',
+                                                '${ApiConfig.baseUrl}/uploads/products/${prod['PROD_IMAGE_1']}',
                                                 width: 38,
                                                 height: 38,
                                                 fit: BoxFit.cover,
@@ -1012,11 +1029,23 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
                       isProcessing = true;
                     });
                     
-                    // Call the callback function
-                    await widget.onBarcodeScanned(barcode.rawValue!);
-                    
-                    // Close the scanner after processing
-                    Navigator.pop(context);
+                    try {
+                      print('Barcode detected: ${barcode.rawValue!}');
+                      
+                      // Close the scanner first
+                      Navigator.pop(context);
+                      
+                      // Then call the callback function
+                      await widget.onBarcodeScanned(barcode.rawValue!);
+                    } catch (e) {
+                      print('Error processing barcode: $e');
+                      // Reset processing state on error
+                      if (mounted) {
+                        setState(() {
+                          isProcessing = false;
+                        });
+                      }
+                    }
                   }
                 }
               }

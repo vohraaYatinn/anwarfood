@@ -214,7 +214,7 @@ const updateOrderStatus = async (req, res) => {
 
     // First check if order exists
     const [orders] = await db.promise().query(
-      'SELECT ORDER_ID, ORDER_STATUS FROM orders WHERE ORDER_ID = ?',
+      'SELECT ORDER_ID, ORDER_STATUS, PAYMENT_IMAGE FROM orders WHERE ORDER_ID = ?',
       [orderId]
     );
 
@@ -234,13 +234,17 @@ const updateOrderStatus = async (req, res) => {
       });
     }
 
-    // Update order status
+    // Get uploaded image filename if present
+    const paymentImage = req.uploadedFile ? req.uploadedFile.filename : orders[0].PAYMENT_IMAGE;
+
+    // Update order status and payment image
     await db.promise().query(
       `UPDATE orders 
        SET ORDER_STATUS = ?, 
+           PAYMENT_IMAGE = ?,
            UPDATED_DATE = NOW()
        WHERE ORDER_ID = ?`,
-      [status.toLowerCase(), orderId]
+      [status.toLowerCase(), paymentImage, orderId]
     );
 
     res.json({
@@ -250,6 +254,7 @@ const updateOrderStatus = async (req, res) => {
         orderId,
         oldStatus: currentStatus,
         newStatus: status.toLowerCase(),
+        paymentImage: paymentImage ? `/uploads/orders/${paymentImage}` : null,
         updatedAt: new Date()
       }
     });

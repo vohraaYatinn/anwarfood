@@ -383,7 +383,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
       setState(() {
         _isCancelling = true;
       });
-
+      
       final userRole = _user?.role?.toLowerCase() ?? '';
       final orderId = _order!['ORDER_ID'];
       Map<String, dynamic> result;
@@ -553,6 +553,587 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    if (_order == null) return const SizedBox.shrink();
+    
+    if (_order!['PAYMENT_METHOD'] == null && 
+        (_order!['PAYMENT_IMAGE'] == null || _order!['PAYMENT_IMAGE'].toString().isEmpty)) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+            children: [
+                                      const SizedBox(height: 20),
+                                      const Divider(),
+                                      const SizedBox(height: 16),
+                                      Row(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.all(8),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: const Icon(
+                                              Icons.payment_rounded,
+                                              color: Color(0xFF9B1B1B),
+                                              size: 24,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 16),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment: CrossAxisAlignment.start,
+                                              children: [
+                                                if (_order!['PAYMENT_METHOD'] != null) ...[
+                                                  const Text(
+                                                    'Payment Method',
+                                                    style: TextStyle(
+                                                      color: Colors.grey,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    '${_order!['PAYMENT_METHOD']}',
+                                                    style: const TextStyle(
+                                                      fontWeight: FontWeight.w500,
+                                                      fontSize: 16,
+                                                    ),
+                                                  ),
+                                                ],
+                                                if (_order!['PAYMENT_IMAGE'] != null && _order!['PAYMENT_IMAGE'].toString().isNotEmpty) ...[
+                                                  if (_order!['PAYMENT_METHOD'] != null)
+                                                    const SizedBox(height: 12),
+                                                  Row(
+                                                    children: [
+                                                      const Text(
+                                                        'Payment Screenshot',
+                                                        style: TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                      const Spacer(),
+                                                      TextButton(
+                                                        onPressed: () {
+                                                          showDialog(
+                                                            context: context,
+                                                            builder: (context) => Dialog(
+                                                              shape: RoundedRectangleBorder(
+                                                                borderRadius: BorderRadius.circular(20),
+                                                              ),
+                                                              child: Column(
+                                                                mainAxisSize: MainAxisSize.min,
+                                                                children: [
+                                                                  AppBar(
+                                                                    backgroundColor: Colors.transparent,
+                                                                    elevation: 0,
+                                                                    leading: IconButton(
+                                                                      icon: const Icon(Icons.close, color: Colors.black),
+                                                                      onPressed: () => Navigator.pop(context),
+                                                                    ),
+                                                                    title: const Text(
+                                                                      'Payment Screenshot',
+                                                                      style: TextStyle(
+                                                                        color: Colors.black,
+                                                                        fontSize: 18,
+                                                                        fontWeight: FontWeight.bold,
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  Container(
+                                                                    constraints: BoxConstraints(
+                                                                      maxHeight: MediaQuery.of(context).size.height * 0.7,
+                                                                    ),
+                                                                    child: InteractiveViewer(
+                                                                      panEnabled: true,
+                                                                      boundaryMargin: const EdgeInsets.all(20),
+                                                                      minScale: 0.5,
+                                                                      maxScale: 4,
+                                                                      child: Image.network(
+                                                                        '${ApiConfig.baseUrl}/uploads/orders/${_order!['PAYMENT_IMAGE']}',
+                                                                        fit: BoxFit.contain,
+                                                                        loadingBuilder: (context, child, loadingProgress) {
+                                                                          if (loadingProgress == null) return child;
+                                                                          return Center(
+                                                                            child: CircularProgressIndicator(
+                                                                              value: loadingProgress.expectedTotalBytes != null
+                                                                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                                                                  : null,
+                                                                              color: const Color(0xFF9B1B1B),
+                                                                            ),
+                                                                          );
+                                                                        },
+                                                                        errorBuilder: (context, error, stackTrace) {
+                                                                          return const Center(
+                                                                            child: Column(
+                                                                              mainAxisSize: MainAxisSize.min,
+                                                                              children: [
+                                                                                Icon(
+                                                                                  Icons.error_outline,
+                                                                                  color: Colors.red,
+                                                                                  size: 48,
+                                                                                ),
+                                                                                SizedBox(height: 8),
+                                                                                Text(
+                                                                                  'Failed to load image',
+                                                                                  style: TextStyle(
+                                                                                    color: Colors.red,
+                                                                                    fontSize: 16,
+                                                                                  ),
+                                                                                ),
+                                                                              ],
+                                                                            ),
+                                                                          );
+                                                                        },
+                                                                      ),
+                                                                    ),
+                                                                  ),
+                                                                  const SizedBox(height: 16),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                        style: TextButton.styleFrom(
+                                                          foregroundColor: const Color(0xFF9B1B1B),
+                                                          padding: const EdgeInsets.symmetric(
+                                                            horizontal: 12,
+                                                            vertical: 8,
+                                                          ),
+                                                          shape: RoundedRectangleBorder(
+                                                            borderRadius: BorderRadius.circular(8),
+                                                            side: const BorderSide(
+                                                              color: Color(0xFF9B1B1B),
+                                                              width: 1,
+                                                            ),
+                                                          ),
+                                                        ),
+                                                        child: Row(
+                                                          mainAxisSize: MainAxisSize.min,
+                                                          children: const [
+                                                            Icon(Icons.image, size: 18),
+                                                            SizedBox(width: 4),
+                                                            Text(
+                                                              'View',
+                                                              style: TextStyle(
+                                                                fontWeight: FontWeight.w500,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ],
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+    );
+  }
+
+  Widget _buildRetailerDetails() {
+    // Only show for admin users and when retailer info exists
+    if (_user?.role?.toLowerCase() != 'admin' || 
+        _order == null || 
+        _order!['RETAILER_INFO'] == null) {
+      return const SizedBox.shrink();
+    }
+
+    final retailer = _order!['RETAILER_INFO'];
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.store_rounded,
+                color: Color(0xFF9B1B1B),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Retailer',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            retailer['RET_SHOP_NAME'] ?? 'Not provided',
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                '+91 ${retailer['RET_MOBILE_NO'] ?? 'Not provided'}',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 14,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: retailer['SHOP_OPEN_STATUS'] == 'Y' 
+                      ? Colors.green.shade50 
+                      : Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  retailer['SHOP_OPEN_STATUS'] == 'Y' ? 'Open' : 'Closed',
+                  style: TextStyle(
+                    color: retailer['SHOP_OPEN_STATUS'] == 'Y' 
+                        ? Colors.green.shade700 
+                        : Colors.red.shade700,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: const Color(0xFFF8F6F9),
+          appBar: AppBar(
+            backgroundColor: const Color(0xFFF8F6F9),
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.black),
+              onPressed: () => Navigator.pop(context),
+            ),
+            title: const Text(
+              'Order Details',
+              style: TextStyle(
+                color: Colors.black,
+                fontWeight: FontWeight.bold,
+                fontSize: 18,
+              ),
+            ),
+            centerTitle: false,
+          ),
+          body: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _error.isNotEmpty
+                  ? Center(child: Text(_error, style: const TextStyle(color: Colors.red)))
+                  : _order == null
+                      ? const Center(child: Text('Order not found'))
+                      : SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                color: Colors.white,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFF8F6F9),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            'Order #${_order!['ORDER_NUMBER']}',
+                                            style: const TextStyle(
+                                              color: Color(0xFF9B1B1B),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                        const Spacer(),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                          decoration: BoxDecoration(
+                                            color: _getStatusColor(_order!['ORDER_STATUS'] ?? '').withOpacity(0.1),
+                                            borderRadius: BorderRadius.circular(20),
+                                          ),
+                                          child: Text(
+                                            (_order!['ORDER_STATUS'] ?? '').toString().capitalize(),
+                                            style: TextStyle(
+                                              color: _getStatusColor(_order!['ORDER_STATUS'] ?? ''),
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Order Placed',
+                                      style: TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      _formatDate(_order!['CREATED_DATE']),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    _buildPaymentSection(),
+                                    // Retailer Details (only for admin)
+                                    _buildRetailerDetails(),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Delivery Address
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                color: Colors.white,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Delivery Address',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.location_on_outlined, color: Color(0xFF9B1B1B)),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _order!['DELIVERY_ADDRESS'] ?? '',
+                                                style: const TextStyle(
+                                                  fontWeight: FontWeight.w500,
+                                                  fontSize: 16,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${_order!['DELIVERY_CITY'] ?? ''}, ${_order!['DELIVERY_STATE'] ?? ''}, ${_order!['DELIVERY_COUNTRY'] ?? ''} - ${_order!['DELIVERY_PINCODE'] ?? ''}\n${_order!['DELIVERY_LANDMARK'] ?? ''}',
+                                                style: const TextStyle(
+                                                  color: Colors.grey,
+                                                  fontSize: 14,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Order Items
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                color: Colors.white,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Order Items',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ListView.separated(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: _items.length,
+                                      separatorBuilder: (_, __) => const Divider(height: 24),
+                                      itemBuilder: (context, index) {
+                                        final item = _items[index];
+                                        return Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            ClipRRect(
+                                              borderRadius: BorderRadius.circular(8),
+                                              child: item['PROD_IMAGE_1'] != null && item['PROD_IMAGE_1'].toString().isNotEmpty
+                                                  ? Image.network(
+                                        '${ApiConfig.baseUrl}/uploads/products/${item['PROD_IMAGE_1']}',
+                                                      width: 60,
+                                                      height: 60,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : Container(
+                                                      width: 60,
+                                                      height: 60,
+                                                      color: Colors.grey.shade200,
+                                                      child: const Icon(Icons.image, color: Colors.grey),
+                                                    ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    item['PROD_NAME'] ?? '',
+                                                    style: const TextStyle(
+                                                      fontWeight: FontWeight.w500,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Quantity: ${item['QUANTITY']}',
+                                                    style: const TextStyle(
+                                                      color: Colors.grey,
+                                                      fontSize: 13,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 4),
+                                                  Text(
+                                                    'Rs. ${item['TOTAL_PRICE']}',
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF9B1B1B),
+                                                      fontWeight: FontWeight.bold,
+                                                      fontSize: 14,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                        );
+                                      },
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              // Payment Details
+                              Container(
+                                padding: const EdgeInsets.all(16),
+                                color: Colors.white,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Payment Details',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Subtotal',
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Rs. ${_order!['ORDER_TOTAL']}',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: const [
+                                        Text(
+                                          'Delivery Fee',
+                                          style: TextStyle(
+                                            color: Colors.grey,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Rs. 0.00',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w500,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        const Text(
+                                          'Total',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        Text(
+                                          'Rs. ${_order!['ORDER_TOTAL']}',
+                                          style: const TextStyle(
+                                            color: Color(0xFF9B1B1B),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 24),
+                              _buildActionButtons(),
+                              const SizedBox(height: 24),
+                            ],
+                          ),
+                        ),
+        ),
+        if (_showDeliveryConfirmation)
+          Container(
+            color: Colors.black54,
+            child: Center(
+              child: _buildDeliveryConfirmation(),
+            ),
+          ),
+      ],
     );
   }
 
@@ -752,495 +1333,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     }
 
     return const SizedBox.shrink();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Scaffold(
-          backgroundColor: const Color(0xFFF8F6F9),
-          appBar: AppBar(
-            backgroundColor: const Color(0xFFF8F6F9),
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.black),
-              onPressed: () => Navigator.pop(context),
-            ),
-            title: const Text(
-              'Order Details',
-              style: TextStyle(
-                color: Colors.black,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-            centerTitle: false,
-          ),
-          body: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _error.isNotEmpty
-                  ? Center(child: Text(_error, style: const TextStyle(color: Colors.red)))
-                  : _order == null
-                      ? const Center(child: Text('Order not found'))
-                      : SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Order Info
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                color: Colors.white,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: const Color(0xFFF8F6F9),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            'Order #${_order!['ORDER_NUMBER']}',
-                                            style: const TextStyle(
-                                              color: Color(0xFF9B1B1B),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                        const Spacer(),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                          decoration: BoxDecoration(
-                                            color: _getStatusColor(_order!['ORDER_STATUS'] ?? '').withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(20),
-                                          ),
-                                          child: Text(
-                                            (_order!['ORDER_STATUS'] ?? '').toString().capitalize(),
-                                            style: TextStyle(
-                                              color: _getStatusColor(_order!['ORDER_STATUS'] ?? ''),
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 16),
-                                    const Text(
-                                      'Order Placed',
-                                      style: TextStyle(
-                                        color: Colors.grey,
-                                        fontSize: 14,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      _formatDate(_order!['CREATED_DATE']),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w500,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    if (_order!['PAYMENT_METHOD'] != null || (_order!['PAYMENT_IMAGE'] != null && _order!['PAYMENT_IMAGE'].toString().isNotEmpty)) ...[
-                                      const SizedBox(height: 20),
-                                      const Divider(),
-                                      const SizedBox(height: 16),
-                                      Row(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(8),
-                                            decoration: BoxDecoration(
-                                              color: const Color(0xFF9B1B1B).withOpacity(0.1),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Icon(
-                                              Icons.payment_rounded,
-                                              color: Color(0xFF9B1B1B),
-                                              size: 24,
-                                            ),
-                                          ),
-                                          const SizedBox(width: 16),
-                                          Expanded(
-                                            child: Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                if (_order!['PAYMENT_METHOD'] != null) ...[
-                                                  const Text(
-                                                    'Payment Method',
-                                                    style: TextStyle(
-                                                      color: Colors.grey,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    '${_order!['PAYMENT_METHOD']}',
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.w500,
-                                                      fontSize: 16,
-                                                    ),
-                                                  ),
-                                                ],
-                                                if (_order!['PAYMENT_IMAGE'] != null && _order!['PAYMENT_IMAGE'].toString().isNotEmpty) ...[
-                                                  if (_order!['PAYMENT_METHOD'] != null)
-                                                    const SizedBox(height: 12),
-                                                  Row(
-                                                    children: [
-                                                      const Text(
-                                                        'Payment Screenshot',
-                                                        style: TextStyle(
-                                                          color: Colors.grey,
-                                                          fontSize: 14,
-                                                        ),
-                                                      ),
-                                                      const Spacer(),
-                                                      TextButton(
-                                                        onPressed: () {
-                                                          showDialog(
-                                                            context: context,
-                                                            builder: (context) => Dialog(
-                                                              shape: RoundedRectangleBorder(
-                                                                borderRadius: BorderRadius.circular(20),
-                                                              ),
-                                                              child: Column(
-                                                                mainAxisSize: MainAxisSize.min,
-                                                                children: [
-                                                                  AppBar(
-                                                                    backgroundColor: Colors.transparent,
-                                                                    elevation: 0,
-                                                                    leading: IconButton(
-                                                                      icon: const Icon(Icons.close, color: Colors.black),
-                                                                      onPressed: () => Navigator.pop(context),
-                                                                    ),
-                                                                    title: const Text(
-                                                                      'Payment Screenshot',
-                                                                      style: TextStyle(
-                                                                        color: Colors.black,
-                                                                        fontSize: 18,
-                                                                        fontWeight: FontWeight.bold,
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                  Container(
-                                                                    constraints: BoxConstraints(
-                                                                      maxHeight: MediaQuery.of(context).size.height * 0.7,
-                                                                    ),
-                                                                    child: InteractiveViewer(
-                                                                      panEnabled: true,
-                                                                      boundaryMargin: const EdgeInsets.all(20),
-                                                                      minScale: 0.5,
-                                                                      maxScale: 4,
-                                                                      child: Image.network(
-                                                                        '${ApiConfig.baseUrl}/uploads/orders/${_order!['PAYMENT_IMAGE']}',
-                                                                        fit: BoxFit.contain,
-                                                                        loadingBuilder: (context, child, loadingProgress) {
-                                                                          if (loadingProgress == null) return child;
-                                                                          return Center(
-                                                                            child: CircularProgressIndicator(
-                                                                              value: loadingProgress.expectedTotalBytes != null
-                                                                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                                                                                  : null,
-                                                                              color: const Color(0xFF9B1B1B),
-                                                                            ),
-                                                                          );
-                                                                        },
-                                                                        errorBuilder: (context, error, stackTrace) {
-                                                                          return const Center(
-                                                                            child: Column(
-                                                                              mainAxisSize: MainAxisSize.min,
-                                                                              children: [
-                                                                                Icon(
-                                                                                  Icons.error_outline,
-                                                                                  color: Colors.red,
-                                                                                  size: 48,
-                                                                                ),
-                                                                                SizedBox(height: 8),
-                                                                                Text(
-                                                                                  'Failed to load image',
-                                                                                  style: TextStyle(
-                                                                                    color: Colors.red,
-                                                                                    fontSize: 16,
-                                                                                  ),
-                                                                                ),
-                                                                              ],
-                                                                            ),
-                                                                          );
-                                                                        },
-                                                                      ),
-                                                                    ),
-                                                                  ),
-                                                                  const SizedBox(height: 16),
-                                                                ],
-                                                              ),
-                                                            ),
-                                                          );
-                                                        },
-                                                        style: TextButton.styleFrom(
-                                                          foregroundColor: const Color(0xFF9B1B1B),
-                                                          padding: const EdgeInsets.symmetric(
-                                                            horizontal: 12,
-                                                            vertical: 8,
-                                                          ),
-                                                          shape: RoundedRectangleBorder(
-                                                            borderRadius: BorderRadius.circular(8),
-                                                            side: const BorderSide(
-                                                              color: Color(0xFF9B1B1B),
-                                                              width: 1,
-                                                            ),
-                                                          ),
-                                                        ),
-                                                        child: Row(
-                                                          mainAxisSize: MainAxisSize.min,
-                                                          children: const [
-                                                            Icon(Icons.image, size: 18),
-                                                            SizedBox(width: 4),
-                                                            Text(
-                                                              'View',
-                                                              style: TextStyle(
-                                                                fontWeight: FontWeight.w500,
-                                                              ),
-                                                            ),
-                                                          ],
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              // Delivery Address
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                color: Colors.white,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Delivery Address',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.location_on_outlined, color: Color(0xFF9B1B1B)),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text(
-                                                _order!['DELIVERY_ADDRESS'] ?? '',
-                                                style: const TextStyle(
-                                                  fontWeight: FontWeight.w500,
-                                                  fontSize: 16,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 4),
-                                              Text(
-                                                '${_order!['DELIVERY_CITY'] ?? ''}, ${_order!['DELIVERY_STATE'] ?? ''}, ${_order!['DELIVERY_COUNTRY'] ?? ''} - ${_order!['DELIVERY_PINCODE'] ?? ''}\n${_order!['DELIVERY_LANDMARK'] ?? ''}',
-                                                style: const TextStyle(
-                                                  color: Colors.grey,
-                                                  fontSize: 14,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              // Order Items
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                color: Colors.white,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Order Items',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    ListView.separated(
-                                      shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
-                                      itemCount: _items.length,
-                                      separatorBuilder: (_, __) => const Divider(height: 24),
-                                      itemBuilder: (context, index) {
-                                        final item = _items[index];
-                                        return Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            ClipRRect(
-                                              borderRadius: BorderRadius.circular(8),
-                                              child: item['PROD_IMAGE_1'] != null && item['PROD_IMAGE_1'].toString().isNotEmpty
-                                                  ? Image.network(
-                                                      '${item['PROD_IMAGE_1']}',
-                                                      width: 60,
-                                                      height: 60,
-                                                      fit: BoxFit.cover,
-                                                    )
-                                                  : Container(
-                                                      width: 60,
-                                                      height: 60,
-                                                      color: Colors.grey.shade200,
-                                                      child: const Icon(Icons.image, color: Colors.grey),
-                                                    ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Expanded(
-                                              child: Column(
-                                                crossAxisAlignment: CrossAxisAlignment.start,
-                                                children: [
-                                                  Text(
-                                                    item['PROD_NAME'] ?? '',
-                                                    style: const TextStyle(
-                                                      fontWeight: FontWeight.w500,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Quantity: ${item['QUANTITY']}',
-                                                    style: const TextStyle(
-                                                      color: Colors.grey,
-                                                      fontSize: 13,
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 4),
-                                                  Text(
-                                                    'Rs. ${item['TOTAL_PRICE']}',
-                                                    style: const TextStyle(
-                                                      color: Color(0xFF9B1B1B),
-                                                      fontWeight: FontWeight.bold,
-                                                      fontSize: 14,
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ),
-                                          ],
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              // Payment Details
-                              Container(
-                                padding: const EdgeInsets.all(16),
-                                color: Colors.white,
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text(
-                                      'Payment Details',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 16),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'Subtotal',
-                                          style: TextStyle(
-                                            color: Colors.grey,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Rs. ${_order!['ORDER_TOTAL']}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: const [
-                                        Text(
-                                          'Delivery Fee',
-                                          style: TextStyle(
-                                            color: Colors.grey,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Rs. 0.00',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w500,
-                                            fontSize: 14,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 8),
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        const Text(
-                                          'Total',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                        Text(
-                                          'Rs. ${_order!['ORDER_TOTAL']}',
-                                          style: const TextStyle(
-                                            color: Color(0xFF9B1B1B),
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 16,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-                              _buildActionButtons(),
-                              const SizedBox(height: 24),
-                            ],
-                          ),
-                        ),
-        ),
-        if (_showDeliveryConfirmation)
-          Container(
-            color: Colors.black54,
-            child: Center(
-              child: _buildDeliveryConfirmation(),
-            ),
-          ),
-      ],
-    );
   }
 }
 

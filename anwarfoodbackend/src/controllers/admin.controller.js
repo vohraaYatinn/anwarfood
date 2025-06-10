@@ -24,13 +24,20 @@ const addProduct = async (req, res) => {
       prodMfgDate,
       prodExpiryDate,
       prodMfgBy,
-      prodImage1,
-      prodImage2,
-      prodImage3,
       prodCatId,
       isBarcodeAvailable = 'N',
-      productUnits = [] // Array of product units
+      productUnits = [], // Array of product units
+      barcodes = [] // Array of barcodes
     } = req.body;
+
+    // Parse JSON strings if they are strings
+    const parsedProductUnits = typeof productUnits === 'string' ? JSON.parse(productUnits) : productUnits;
+    const parsedBarcodes = typeof barcodes === 'string' ? JSON.parse(barcodes) : barcodes;
+
+    // Get uploaded image filenames
+    const prodImage1 = req.uploadedFiles?.prodImage1 || null;
+    const prodImage2 = req.uploadedFiles?.prodImage2 || null;
+    const prodImage3 = req.uploadedFiles?.prodImage3 || null;
 
     // Insert product first
     const [result] = await connection.query(
@@ -53,8 +60,8 @@ const addProduct = async (req, res) => {
     const productId = result.insertId;
 
     // Insert product units if provided
-    if (productUnits && productUnits.length > 0) {
-      const unitValues = productUnits.map(unit => [
+    if (parsedProductUnits && parsedProductUnits.length > 0) {
+      const unitValues = parsedProductUnits.map(unit => [
         productId,
         unit.unitName,
         unit.unitValue,
@@ -75,12 +82,76 @@ const addProduct = async (req, res) => {
       );
     }
 
+    if (parsedBarcodes && parsedBarcodes.length > 0) {
+      // Get the last barcode code
+      const [lastBarcode] = await connection.query(
+        'SELECT PRDB_CODE FROM product_barcodes ORDER BY PRDB_ID DESC LIMIT 1'
+      );
+
+      let nextNumber = 1;
+      if (lastBarcode.length > 0) {
+        const lastCode = lastBarcode[0].PRDB_CODE;
+        const lastNumber = parseInt(lastCode.replace('BAR', ''));
+        nextNumber = lastNumber + 1;
+      }
+
+      const barcodeValues = parsedBarcodes.map((barcode, index) => {
+        const barcodeCode = `BAR${(nextNumber + index).toString().padStart(3, '0')}`;
+        return [
+          productId,
+          barcodeCode,
+          barcode.toString(), // Convert barcode to string in case it's a number
+          'A' // SOLD_STATUS - Active
+        ];
+      });
+
+      await connection.query(
+        `INSERT INTO product_barcodes (
+          PRDB_PROD_ID, PRDB_CODE, PRDB_BARCODE, SOLD_STATUS
+        ) VALUES ?`,
+        [barcodeValues]
+      );
+
+      // Update product to indicate it has barcodes
+      await connection.query(
+        'UPDATE product SET IS_BARCODE_AVAILABLE = "Y" WHERE PROD_ID = ?',
+        [productId]
+      );
+    }
+
     await connection.commit();
+
+    // Get the created product with all details
+    const [createdProduct] = await connection.query(
+      'SELECT * FROM product WHERE PROD_ID = ?',
+      [productId]
+    );
+
+    // Get the product units
+    const [productUnitsResult] = await connection.query(
+      'SELECT * FROM product_unit WHERE PU_PROD_ID = ? AND PU_STATUS = "A"',
+      [productId]
+    );
+
+    // Get the product barcodes
+    const [productBarcodes] = await connection.query(
+      'SELECT * FROM product_barcodes WHERE PRDB_PROD_ID = ? AND SOLD_STATUS = "A"',
+      [productId]
+    );
 
     res.status(201).json({
       success: true,
-      message: 'Product and units added successfully',
-      productId: productId
+      message: 'Product added successfully',
+      data: {
+        product: {
+          ...createdProduct[0],
+          PROD_IMAGE_1: createdProduct[0].PROD_IMAGE_1 ? `/uploads/products/${createdProduct[0].PROD_IMAGE_1}` : null,
+          PROD_IMAGE_2: createdProduct[0].PROD_IMAGE_2 ? `/uploads/products/${createdProduct[0].PROD_IMAGE_2}` : null,
+          PROD_IMAGE_3: createdProduct[0].PROD_IMAGE_3 ? `/uploads/products/${createdProduct[0].PROD_IMAGE_3}` : null
+        },
+        units: productUnitsResult,
+        barcodes: productBarcodes
+      }
     });
   } catch (error) {
     await connection.rollback();
@@ -118,17 +189,21 @@ const editProduct = async (req, res) => {
       prodMfgDate,
       prodExpiryDate,
       prodMfgBy,
-      prodImage1,
-      prodImage2,
-      prodImage3,
       prodCatId,
       isBarcodeAvailable,
-      productUnits = [] // Array of product units
+      productUnits = [], // Array of product units
+      barcodes = [], // Array of barcodes
+      removeImages = [] // Array of image numbers to remove (1, 2, or 3)
     } = req.body;
+
+    // Parse JSON strings if they are strings
+    const parsedProductUnits = typeof productUnits === 'string' ? JSON.parse(productUnits) : productUnits;
+    const parsedBarcodes = typeof barcodes === 'string' ? JSON.parse(barcodes) : barcodes;
+    const parsedRemoveImages = typeof removeImages === 'string' ? JSON.parse(removeImages) : removeImages;
 
     // First check if product exists
     const [existingProduct] = await connection.query(
-      'SELECT PROD_ID FROM product WHERE PROD_ID = ?',
+      'SELECT * FROM product WHERE PROD_ID = ?',
       [productId]
     );
 
@@ -140,8 +215,21 @@ const editProduct = async (req, res) => {
       });
     }
 
+    // Get uploaded image filenames
+    const prodImage1 = req.uploadedFiles?.prodImage1 || null;
+    const prodImage2 = req.uploadedFiles?.prodImage2 || null;
+    const prodImage3 = req.uploadedFiles?.prodImage3 || null;
+
+    // Prepare image update fields
+    const currentProduct = existingProduct[0];
+    const updatedImages = {
+      PROD_IMAGE_1: parsedRemoveImages.includes(1) ? null : (prodImage1 || currentProduct.PROD_IMAGE_1),
+      PROD_IMAGE_2: parsedRemoveImages.includes(2) ? null : (prodImage2 || currentProduct.PROD_IMAGE_2),
+      PROD_IMAGE_3: parsedRemoveImages.includes(3) ? null : (prodImage3 || currentProduct.PROD_IMAGE_3)
+    };
+
     // Update product details
-    const [result] = await connection.query(
+    await connection.query(
       `UPDATE product SET 
         PROD_SUB_CAT_ID = ?, PROD_NAME = ?, PROD_CODE = ?, PROD_DESC = ?,
         PROD_MRP = ?, PROD_SP = ?, PROD_REORDER_LEVEL = ?, PROD_QOH = ?,
@@ -153,83 +241,113 @@ const editProduct = async (req, res) => {
       [
         prodSubCatId, prodName, prodCode, prodDesc, prodMrp, prodSp,
         prodReorderLevel, prodQoh, prodHsnCode, prodCgst, prodIgst, prodSgst,
-        prodMfgDate, prodExpiryDate, prodMfgBy, prodImage1, prodImage2,
-        prodImage3, prodCatId, isBarcodeAvailable, req.user.USERNAME, productId
+        prodMfgDate, prodExpiryDate, prodMfgBy,
+        updatedImages.PROD_IMAGE_1, updatedImages.PROD_IMAGE_2, updatedImages.PROD_IMAGE_3,
+        prodCatId, isBarcodeAvailable, req.user.USERNAME, productId
       ]
     );
 
     // Handle product units
-    if (productUnits && productUnits.length > 0) {
-      // Get existing units
-      const [existingUnits] = await connection.query(
-        'SELECT PU_ID, PU_PROD_UNIT as unitName, PU_PROD_UNIT_VALUE as unitValue, PU_PROD_RATE as unitRate, PU_STATUS as status FROM product_unit WHERE PU_PROD_ID = ?',
+    if (parsedProductUnits && parsedProductUnits.length > 0) {
+      // Deactivate all existing units
+      await connection.query(
+        'UPDATE product_unit SET PU_STATUS = "I" WHERE PU_PROD_ID = ?',
         [productId]
       );
 
-      // Create a map of existing units for easy comparison
-      const existingUnitsMap = new Map();
-      existingUnits.forEach(unit => {
-        const key = `${unit.unitName}-${unit.unitValue}-${unit.unitRate}`;
-        existingUnitsMap.set(key, unit);
+      // Insert new units
+      const unitValues = parsedProductUnits.map(unit => [
+        productId,
+        unit.unitName,
+        unit.unitValue,
+        unit.unitRate,
+        'A', // PU_STATUS - Active
+        req.user.USERNAME,
+        req.user.USERNAME,
+        new Date(),
+        new Date()
+      ]);
+
+      await connection.query(
+        `INSERT INTO product_unit (
+          PU_PROD_ID, PU_PROD_UNIT, PU_PROD_UNIT_VALUE, PU_PROD_RATE,
+          PU_STATUS, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE
+        ) VALUES ?`,
+        [unitValues]
+      );
+    }
+
+    // Handle barcodes
+    if (parsedBarcodes && parsedBarcodes.length > 0) {
+      // Get the last barcode code
+      const [lastBarcode] = await connection.query(
+        'SELECT PRDB_CODE FROM product_barcodes ORDER BY PRDB_ID DESC LIMIT 1'
+      );
+
+      let nextNumber = 1;
+      if (lastBarcode.length > 0) {
+        const lastCode = lastBarcode[0].PRDB_CODE;
+        const lastNumber = parseInt(lastCode.replace('BAR', ''));
+        nextNumber = lastNumber + 1;
+      }
+
+      const barcodeValues = parsedBarcodes.map((barcode, index) => {
+        const barcodeCode = `BAR${(nextNumber + index).toString().padStart(3, '0')}`;
+        return [
+          productId,
+          barcodeCode,
+          barcode.toString(), // Convert barcode to string in case it's a number
+          'A' // SOLD_STATUS - Active
+        ];
       });
 
-      // Process each unit in the request
-      for (const unit of productUnits) {
-        const unitKey = `${unit.unitName}-${unit.unitValue}-${unit.unitRate}`;
-        const existingUnit = existingUnitsMap.get(unitKey);
+      await connection.query(
+        `INSERT INTO product_barcodes (
+          PRDB_PROD_ID, PRDB_CODE, PRDB_BARCODE, SOLD_STATUS
+        ) VALUES ?`,
+        [barcodeValues]
+      );
 
-        if (existingUnit) {
-          // Unit exists with same values, just ensure it's active
-          if (existingUnit.status !== 'A') {
-            await connection.query(
-              `UPDATE product_unit 
-               SET PU_STATUS = 'A',
-                   UPDATED_BY = ?,
-                   UPDATED_DATE = NOW()
-               WHERE PU_ID = ?`,
-              [req.user.USERNAME, existingUnit.PU_ID]
-            );
-          }
-          // Remove from map to track which units were not in the request
-          existingUnitsMap.delete(unitKey);
-        } else {
-          // Unit doesn't exist or has different values, create new one
-          await connection.query(
-            `INSERT INTO product_unit (
-              PU_PROD_ID, PU_PROD_UNIT, PU_PROD_UNIT_VALUE, PU_PROD_RATE,
-              PU_STATUS, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE
-            ) VALUES (?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
-            [
-              productId,
-              unit.unitName,
-              unit.unitValue,
-              unit.unitRate,
-              req.user.USERNAME,
-              req.user.USERNAME
-            ]
-          );
-        }
-      }
-
-      // Deactivate units that were not in the request
-      if (existingUnitsMap.size > 0) {
-        const unitsToDeactivate = Array.from(existingUnitsMap.values()).map(u => u.PU_ID);
-        await connection.query(
-          `UPDATE product_unit 
-           SET PU_STATUS = 'I',
-               UPDATED_BY = ?,
-               UPDATED_DATE = NOW()
-           WHERE PU_ID IN (?)`,
-          [req.user.USERNAME, unitsToDeactivate]
-        );
-      }
+      // Update product to indicate it has barcodes
+      await connection.query(
+        'UPDATE product SET IS_BARCODE_AVAILABLE = "Y" WHERE PROD_ID = ?',
+        [productId]
+      );
     }
 
     await connection.commit();
 
+    // Get updated product details
+    const [updatedProduct] = await connection.query(
+      'SELECT * FROM product WHERE PROD_ID = ?',
+      [productId]
+    );
+
+    // Get active units
+    const [activeUnits] = await connection.query(
+      'SELECT * FROM product_unit WHERE PU_PROD_ID = ? AND PU_STATUS = "A"',
+      [productId]
+    );
+
+    // Get active barcodes
+    const [activeBarcodes] = await connection.query(
+      'SELECT * FROM product_barcodes WHERE PRDB_PROD_ID = ? AND SOLD_STATUS = "A"',
+      [productId]
+    );
+
     res.json({
       success: true,
-      message: 'Product and units updated successfully'
+      message: 'Product updated successfully',
+      data: {
+        product: {
+          ...updatedProduct[0],
+          PROD_IMAGE_1: updatedProduct[0].PROD_IMAGE_1 ? `/uploads/products/${updatedProduct[0].PROD_IMAGE_1}` : null,
+          PROD_IMAGE_2: updatedProduct[0].PROD_IMAGE_2 ? `/uploads/products/${updatedProduct[0].PROD_IMAGE_2}` : null,
+          PROD_IMAGE_3: updatedProduct[0].PROD_IMAGE_3 ? `/uploads/products/${updatedProduct[0].PROD_IMAGE_3}` : null
+        },
+        units: activeUnits,
+        barcodes: activeBarcodes
+      }
     });
   } catch (error) {
     await connection.rollback();
@@ -489,6 +607,7 @@ const fetchAllOrders = async (req, res) => {
         o.DELIVERY_PINCODE,
         o.DELIVERY_LANDMARK,
         o.PAYMENT_METHOD, 
+        o.PAYMENT_IMAGE,
         o.ORDER_NOTES,
         o.CREATED_DATE,
         o.UPDATED_DATE,
@@ -593,7 +712,7 @@ const getOrderDetails = async (req, res) => {
   try {
     const { orderId } = req.params;
 
-    // Get order details
+    // Get order details with customer info
     const [orderResult] = await db.promise().query(
       `SELECT 
         o.ORDER_ID, 
@@ -609,6 +728,7 @@ const getOrderDetails = async (req, res) => {
         o.DELIVERY_LANDMARK,
         o.PAYMENT_METHOD, 
         o.ORDER_NOTES,
+        o.PAYMENT_IMAGE,
         o.CREATED_DATE,
         o.UPDATED_DATE,
         u.USERNAME as CUSTOMER_NAME,
@@ -647,9 +767,39 @@ const getOrderDetails = async (req, res) => {
       [orderId]
     );
 
+    // Get retailer info based on customer's phone number
+    const [retailerInfo] = await db.promise().query(
+      `SELECT 
+        RET_ID,
+        RET_CODE,
+        RET_TYPE,
+        RET_NAME,
+        RET_SHOP_NAME,
+        RET_MOBILE_NO,
+        RET_ADDRESS,
+        RET_PIN_CODE,
+        RET_EMAIL_ID,
+        RET_PHOTO,
+        RET_COUNTRY,
+        RET_STATE,
+        RET_CITY,
+        RET_GST_NO,
+        RET_LAT,
+        RET_LONG,
+        RET_DEL_STATUS,
+        SHOP_OPEN_STATUS,
+        BARCODE_URL
+       FROM retailer_info
+       WHERE RET_MOBILE_NO = ? AND RET_DEL_STATUS != 'Y'
+       LIMIT 1`,
+      [orderResult[0].CUSTOMER_MOBILE]
+    );
+
     const orderDetails = {
       ...orderResult[0],
-      ORDER_ITEMS: orderItems
+      ORDER_ITEMS: orderItems,
+      RETAILER_INFO: retailerInfo[0] || null,
+      PAYMENT_IMAGE: orderResult[0].PAYMENT_IMAGE
     };
 
     res.json({
@@ -993,6 +1143,66 @@ const fetchEmployeeOrders = async (req, res) => {
   }
 };
 
+const getRetailerByPhone = async (req, res) => {
+  try {
+    let { phone } = req.params;
+
+    // Validate phone number
+    if (!phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Phone number is required'
+      });
+    }
+
+    // Clean the phone number - remove +91 if present
+    phone = phone.replace(/^\+91/, '');
+    
+    // Remove any spaces, dashes, or other non-numeric characters except +
+    phone = phone.replace(/[^\d]/g, '');
+
+    // Validate that we have a valid phone number after cleaning
+    if (!phone || phone.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid phone number format'
+      });
+    }
+
+    // Get retailer details by phone number
+    const [retailer] = await db.promise().query(
+      `SELECT 
+        RET_ID, RET_CODE, RET_TYPE, RET_NAME, RET_SHOP_NAME, RET_MOBILE_NO,
+        RET_ADDRESS, RET_PIN_CODE, RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY,
+        RET_STATE, RET_CITY, RET_GST_NO, RET_LAT, RET_LONG, RET_DEL_STATUS,
+        CREATED_DATE, UPDATED_DATE, CREATED_BY, UPDATED_BY, SHOP_OPEN_STATUS,
+        BARCODE_URL
+       FROM retailer_info 
+       WHERE RET_MOBILE_NO = ?`,
+      [phone]
+    );
+
+    if (retailer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Retailer not found with this phone number'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: retailer[0]
+    });
+  } catch (error) {
+    console.error('Get retailer by phone error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching retailer details',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   addProduct,
   editProduct,
@@ -1010,5 +1220,6 @@ module.exports = {
   getOrderDetails,
   searchOrders,
   fetchEmployees,
-  fetchEmployeeOrders
+  fetchEmployeeOrders,
+  getRetailerByPhone
 }; 
