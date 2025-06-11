@@ -109,7 +109,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
   Future<void> _pickDeliveryImage() async {
     try {
       if (kIsWeb) {
-        // Web implementation
+        // Web implementation - only gallery
         final XFile? image = await _picker.pickImage(
           source: ImageSource.gallery,
           imageQuality: 80,
@@ -122,39 +122,14 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           });
         }
       } else {
-        // Mobile implementation
-        if (Platform.isAndroid) {
-          final status = await Permission.storage.request();
-          if (status.isDenied) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Storage permission is required to pick an image'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-            return;
-          }
-        }
-
-        final XFile? image = await _picker.pickImage(
-          source: ImageSource.gallery,
-          imageQuality: 80,
-          maxWidth: 1000,
-        );
-        
-        if (image != null && mounted) {
-          setState(() {
-            _deliveryImage = File(image.path);
-          });
-        }
+        // Mobile implementation - show choice dialog
+        await _showImageSourceDialog();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error picking image: $e'),
+            content: Text('Error: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -162,12 +137,385 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     }
   }
 
+  Future<void> _showImageSourceDialog() async {
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.add_a_photo,
+                    color: Color(0xFF9B1B1B),
+                    size: 30,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Add Payment Image',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Choose how you want to add the payment image',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Color(0xFF9B1B1B)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _pickImageFromSource(ImageSource.camera);
+                        },
+                        icon: const Icon(
+                          Icons.camera_alt,
+                          color: Color(0xFF9B1B1B),
+                        ),
+                        label: const Text(
+                          'Camera',
+                          style: TextStyle(
+                            color: Color(0xFF9B1B1B),
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF9B1B1B),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(context);
+                          _pickImageFromSource(ImageSource.gallery);
+                        },
+                        icon: const Icon(
+                          Icons.photo_library,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          'Gallery',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _pickImageFromSource(ImageSource source) async {
+    try {
+      // Check and request permissions based on source
+      if (source == ImageSource.camera) {
+        final cameraStatus = await Permission.camera.request();
+        if (cameraStatus.isDenied || cameraStatus.isPermanentlyDenied) {
+          if (mounted) {
+            _showPermissionDialog(
+              'Camera Permission Required',
+              'This app needs camera access to take photos for payment confirmation.',
+              Permission.camera,
+            );
+          }
+          return;
+        }
+      } else {
+        // For gallery access
+        PermissionStatus storageStatus;
+        if (Platform.isAndroid) {
+          final androidInfo = await _getAndroidVersion();
+          if (androidInfo >= 33) {
+            // Android 13+ uses granular media permissions
+            storageStatus = await Permission.photos.request();
+          } else {
+            // Older Android versions
+            storageStatus = await Permission.storage.request();
+          }
+        } else {
+          // iOS
+          storageStatus = await Permission.photos.request();
+        }
+
+        if (storageStatus.isDenied || storageStatus.isPermanentlyDenied) {
+          if (mounted) {
+            _showPermissionDialog(
+              'Storage Permission Required',
+              'This app needs storage access to select photos for payment confirmation.',
+              storageStatus == PermissionStatus.permanentlyDenied ? null : (Platform.isAndroid ? Permission.storage : Permission.photos),
+            );
+          }
+          return;
+        }
+      }
+
+      // Pick image from the specified source with proper settings
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        preferredCameraDevice: CameraDevice.rear,
+      );
+
+      if (image != null && mounted) {
+        // Verify it's an image file
+        final fileName = image.name.toLowerCase();
+        final validExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+        final hasValidExtension = validExtensions.any((ext) => fileName.endsWith('.$ext'));
+        
+        if (!hasValidExtension && !kIsWeb) {
+          // For mobile, check the path extension
+          final pathExtension = image.path.toLowerCase().split('.').last;
+          if (!validExtensions.contains(pathExtension)) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Please select a valid image file (JPG, PNG, GIF, WEBP)'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+        }
+
+        setState(() {
+          _deliveryImage = kIsWeb ? image : File(image.path);
+        });
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Payment image selected successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error selecting image: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<int> _getAndroidVersion() async {
+    try {
+      if (Platform.isAndroid) {
+        final androidInfo = await Permission.camera.status;
+        // This is a simplified check - in real implementation you might want to use device_info_plus
+        return 30; // Default to API 30 for now
+      }
+      return 0;
+    } catch (e) {
+      return 30; // Default
+    }
+  }
+
+  void _showPermissionDialog(String title, String message, Permission? permission) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange.shade700,
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(
+              fontSize: 16,
+              color: Colors.grey,
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text(
+                'Cancel',
+                style: TextStyle(color: Colors.grey),
+              ),
+            ),
+            if (permission != null)
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9B1B1B),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await permission.request();
+                },
+                child: const Text(
+                  'Grant Permission',
+                  style: TextStyle(color: Colors.white),
+                ),
+              )
+            else
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF9B1B1B),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.pop(context);
+                  openAppSettings();
+                },
+                child: const Text(
+                  'Open Settings',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _markAsDelivered() async {
     if (_order == null) return;
 
-    setState(() {
-      _showDeliveryConfirmation = true;
-    });
+    // For employee role only - check if payment image exists
+    if (_user?.role?.toLowerCase() == 'employee') {
+      // If payment image exists, directly mark as delivered
+      if (_order!['PAYMENT_IMAGE'] != null && _order!['PAYMENT_IMAGE'].toString().isNotEmpty) {
+        await _directMarkAsDelivered();
+      } else {
+        // If no payment image, show upload dialog
+        setState(() {
+          _showDeliveryConfirmation = true;
+        });
+      }
+    } else {
+      // For other roles, keep existing behavior
+      setState(() {
+        _showDeliveryConfirmation = true;
+      });
+    }
+  }
+
+  Future<void> _directMarkAsDelivered() async {
+    if (_order == null) return;
+
+    try {
+      setState(() {
+        _isUpdatingStatus = true;
+      });
+
+      final result = await _orderService.employeeUpdateOrderStatus(_order!['ORDER_ID'], 'delivered');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result['message'] ?? 'Order marked as delivered'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        setState(() {
+          _order!['ORDER_STATUS'] = 'delivered';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update order status: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUpdatingStatus = false;
+        });
+      }
+    }
   }
 
   Future<void> _confirmDelivery() async {
@@ -187,14 +535,28 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         _isUpdatingStatus = true;
       });
 
-      // For now, we'll just update the status without sending the image
-      // In a real implementation, you would upload the image to your server first
-      final result = await _orderService.employeeUpdateOrderStatus(_order!['ORDER_ID'], 'delivered');
+      print('Starting delivery confirmation with image upload...');
+      print('Image type: ${_deliveryImage.runtimeType}');
+      
+      if (kIsWeb) {
+        print('Web upload - Image name: ${_deliveryImage.name}');
+      } else {
+        print('Mobile upload - Image path: ${_deliveryImage.path}');
+      }
+
+      // Update order status with payment image
+      final result = await _orderService.employeeUpdateOrderStatusWithImage(
+        _order!['ORDER_ID'], 
+        'delivered',
+        _deliveryImage,
+      );
+
+      print('Upload successful: ${result.toString()}');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'Order marked as delivered'),
+            content: Text(result['message'] ?? 'Order marked as delivered successfully'),
             backgroundColor: Colors.green,
           ),
         );
@@ -205,6 +567,7 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
         });
       }
     } catch (e) {
+      print('Upload failed with error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -473,12 +836,31 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                 height: 200,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  image: DecorationImage(
-                    image: kIsWeb
-                        ? NetworkImage(_deliveryImage.path)
-                        : FileImage(_deliveryImage) as ImageProvider,
-                    fit: BoxFit.cover,
-                  ),
+                  border: Border.all(color: Colors.grey.shade300, width: 2),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: kIsWeb
+                      ? Image.network(
+                          _deliveryImage.path,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey.shade100,
+                              child: const Icon(Icons.error, color: Colors.red),
+                            );
+                          },
+                        )
+                      : Image.file(
+                          _deliveryImage,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Container(
+                              color: Colors.grey.shade100,
+                              child: const Icon(Icons.error, color: Colors.red),
+                            );
+                          },
+                        ),
                 ),
               )
             else

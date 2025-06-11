@@ -1,7 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 import '../config/api_config.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/http.dart' as http;
 
 class OrderService {
   final AuthService _authService = AuthService();
@@ -281,7 +286,7 @@ class OrderService {
       if (token == null) throw Exception('No authentication token found');
 
       final response = await http.put(
-        Uri.parse('$baseUrl/api/employee/update-order-status/$orderId'),
+        Uri.parse('$baseUrl/api/employee/orders/$orderId/status'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -299,6 +304,83 @@ class OrderService {
       }
     } catch (e) {
       throw Exception('Error updating order status: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> employeeUpdateOrderStatusWithImage(int orderId, String status, dynamic paymentImage) async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+
+      final request = http.MultipartRequest(
+        'PUT',
+        Uri.parse('$baseUrl/api/employee/orders/$orderId/status'),
+      );
+
+      request.headers['Authorization'] = 'Bearer $token';
+      request.fields['status'] = status;
+
+      // Add the payment image with proper MIME type
+      if (paymentImage != null) {
+        http.MultipartFile multipartFile;
+        
+        if (paymentImage is XFile) {
+          // For web
+          final bytes = await paymentImage.readAsBytes();
+          final fileName = paymentImage.name.isNotEmpty ? paymentImage.name : 'payment_image.jpg';
+          
+          multipartFile = http.MultipartFile.fromBytes(
+            'paymentImage',
+            bytes,
+            filename: fileName,
+            contentType: MediaType('image', _getImageExtension(fileName)),
+          );
+        } else if (paymentImage is File) {
+          // For mobile
+          final fileName = paymentImage.path.split('/').last;
+          final extension = _getImageExtension(fileName);
+          
+          multipartFile = await http.MultipartFile.fromPath(
+            'paymentImage',
+            paymentImage.path,
+            filename: fileName,
+            contentType: MediaType('image', extension),
+          );
+        } else {
+          throw Exception('Invalid image format');
+        }
+        
+        request.files.add(multipartFile);
+      }
+
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      
+      final data = jsonDecode(response.body);
+      if (data['success'] == true) {
+        return data;
+      } else {
+        throw Exception(data['message'] ?? 'Failed to update order status');
+      }
+    } catch (e) {
+      throw Exception('Error updating order status: $e');
+    }
+  }
+
+  String _getImageExtension(String fileName) {
+    final extension = fileName.toLowerCase().split('.').last;
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'jpeg';
+      case 'png':
+        return 'png';
+      case 'gif':
+        return 'gif';
+      case 'webp':
+        return 'webp';
+      default:
+        return 'jpeg'; // Default to jpeg
     }
   }
 } 

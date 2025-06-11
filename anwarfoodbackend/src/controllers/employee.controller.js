@@ -275,7 +275,7 @@ const placeOrderForCustomer = async (req, res) => {
   try {
     await connection.beginTransaction();
     
-    const { phoneNumber, addressId, paymentMethod, notes } = req.body;
+    const { phoneNumber, paymentMethod, notes } = req.body;
 
     if (!phoneNumber) {
       await connection.rollback();
@@ -285,9 +285,11 @@ const placeOrderForCustomer = async (req, res) => {
       });
     }
 
-    // Find customer by phone number
+    // Find customer by phone number with complete user info
     const [customers] = await connection.query(
-      'SELECT USER_ID, USERNAME, EMAIL FROM user_info WHERE MOBILE = ? AND ISACTIVE = "Y"',
+      `SELECT USER_ID, USERNAME, EMAIL, MOBILE, CITY, PROVINCE, ZIP, ADDRESS, USER_TYPE, ISACTIVE 
+       FROM user_info 
+       WHERE MOBILE = ? AND ISACTIVE = "Y"`,
       [phoneNumber]
     );
 
@@ -320,38 +322,24 @@ const placeOrderForCustomer = async (req, res) => {
       });
     }
 
-    // Get address details
-    let orderAddress = null;
-    if (addressId) {
-      const [address] = await connection.query(
-        'SELECT * FROM customer_address WHERE ADDRESS_ID = ? AND USER_ID = ? AND DEL_STATUS != "Y"',
-        [addressId, customerId]
-      );
-      
-      if (address.length === 0) {
-        await connection.rollback();
-        return res.status(404).json({
-          success: false,
-          message: 'Address not found for this customer'
-        });
-      }
-      orderAddress = address[0];
-    } else {
-      // Use default address
-      const [defaultAddr] = await connection.query(
-        'SELECT * FROM customer_address WHERE USER_ID = ? AND IS_DEFAULT = 1 AND DEL_STATUS != "Y" LIMIT 1',
-        [customerId]
-      );
-      
-      if (defaultAddr.length === 0) {
-        await connection.rollback();
-        return res.status(400).json({
-          success: false,
-          message: 'No default address found for customer. Please provide addressId.'
-        });
-      }
-      orderAddress = defaultAddr[0];
+    // Get default address for the customer
+    const [defaultAddress] = await connection.query(
+      `SELECT ADDRESS_ID, USER_ID, ADDRESS, CITY, STATE, COUNTRY, PINCODE, LANDMARK, ADDRESS_TYPE, IS_DEFAULT
+       FROM customer_address 
+       WHERE USER_ID = ? AND IS_DEFAULT = 1 AND DEL_STATUS != "Y" 
+       LIMIT 1`,
+      [customerId]
+    );
+    
+    if (defaultAddress.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'No default address found for this customer. Please ensure customer has a default address set.'
+      });
     }
+
+    const orderAddress = defaultAddress[0];
 
     // Calculate order total
     const orderTotal = cartItems.reduce((total, item) => {
@@ -406,15 +394,18 @@ const placeOrderForCustomer = async (req, res) => {
         customerId: customerId,
         customerName: customer.USERNAME,
         customerEmail: customer.EMAIL,
+        customerPhone: customer.MOBILE,
         orderTotal: orderTotal,
         createdBy: req.user.USERNAME,
         deliveryAddress: {
+          addressId: orderAddress.ADDRESS_ID,
           address: orderAddress.ADDRESS,
           city: orderAddress.CITY,
           state: orderAddress.STATE,
           country: orderAddress.COUNTRY,
           pincode: orderAddress.PINCODE,
-          landmark: orderAddress.LANDMARK
+          landmark: orderAddress.LANDMARK,
+          addressType: orderAddress.ADDRESS_TYPE
         }
       }
     });

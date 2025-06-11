@@ -192,45 +192,40 @@ class _PaymentPageState extends State<PaymentPage> {
 
     // Add payment screenshot if paid online
     if (isPaidOnline && _paymentScreenshot != null) {
-      if (kIsWeb) {
-        // Handle web platform
-        final xFile = _paymentScreenshot as XFile;
-        final bytes = await xFile.readAsBytes();
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'paymentmethod',
-            bytes,
-            filename: xFile.name,
-            contentType: http_parser.MediaType('image', xFile.name.split('.').last),
-          ),
-        );
-      } else {
-        // Handle mobile platforms
-        final file = _paymentScreenshot as File;
-        final extension = file.path.toLowerCase().split('.').last;
-        String contentType = 'image/jpeg';
-        
-        switch (extension) {
-          case 'png':
-            contentType = 'image/png';
-            break;
-          case 'gif':
-            contentType = 'image/gif';
-            break;
-          case 'jpg':
-          case 'jpeg':
-          default:
-            contentType = 'image/jpeg';
-            break;
+      try {
+        if (kIsWeb) {
+          // Handle web platform
+          final xFile = _paymentScreenshot as XFile;
+          final bytes = await xFile.readAsBytes();
+          final fileName = xFile.name.isNotEmpty ? xFile.name : 'payment_image.jpg';
+          final extension = fileName.toLowerCase().split('.').last;
+          
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'paymentImage',
+              bytes,
+              filename: fileName,
+              contentType: http_parser.MediaType('image', _getImageExtension(extension)),
+            ),
+          );
+        } else {
+          // Handle mobile platforms
+          final file = _paymentScreenshot as File;
+          final fileName = file.path.split('/').last;
+          final extension = _getImageExtension(fileName.toLowerCase().split('.').last);
+          
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'paymentImage',
+              file.path,
+              filename: fileName,
+              contentType: http_parser.MediaType('image', extension),
+            ),
+          );
         }
-        
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            'paymentmethod',
-            file.path,
-            contentType: http_parser.MediaType.parse(contentType),
-          ),
-        );
+      } catch (e) {
+        print('Error adding payment image: $e');
+        throw Exception('Failed to attach payment image: ${e.toString()}');
       }
     }
 
@@ -282,50 +277,45 @@ class _PaymentPageState extends State<PaymentPage> {
 
     // Add payment screenshot if paid online
     if (isPaidOnline && _paymentScreenshot != null) {
-      if (kIsWeb) {
-        // Handle web platform
-        final xFile = _paymentScreenshot as XFile;
-        final bytes = await xFile.readAsBytes();
-        request.files.add(
-          http.MultipartFile.fromBytes(
-            'paymentmethod',
-            bytes,
-            filename: xFile.name,
-            contentType: http_parser.MediaType('image', xFile.name.split('.').last),
-          ),
-        );
-      } else {
-        // Handle mobile platforms
-        final file = _paymentScreenshot as File;
-        final extension = file.path.toLowerCase().split('.').last;
-        String contentType = 'image/jpeg';
-        
-        switch (extension) {
-          case 'png':
-            contentType = 'image/png';
-            break;
-          case 'gif':
-            contentType = 'image/gif';
-            break;
-          case 'jpg':
-          case 'jpeg':
-          default:
-            contentType = 'image/jpeg';
-            break;
+      try {
+        if (kIsWeb) {
+          // Handle web platform
+          final xFile = _paymentScreenshot as XFile;
+          final bytes = await xFile.readAsBytes();
+          final fileName = xFile.name.isNotEmpty ? xFile.name : 'payment_image.jpg';
+          final extension = fileName.toLowerCase().split('.').last;
+          
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'paymentImage',
+              bytes,
+              filename: fileName,
+              contentType: http_parser.MediaType('image', _getImageExtension(extension)),
+            ),
+          );
+        } else {
+          // Handle mobile platforms
+          final file = _paymentScreenshot as File;
+          final fileName = file.path.split('/').last;
+          final extension = _getImageExtension(fileName.toLowerCase().split('.').last);
+          
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              'paymentImage',
+              file.path,
+              filename: fileName,
+              contentType: http_parser.MediaType('image', extension),
+            ),
+          );
         }
-        
-        request.files.add(
-          await http.MultipartFile.fromPath(
-            'paymentmethod',
-            file.path,
-            contentType: http_parser.MediaType.parse(contentType),
-          ),
-        );
+      } catch (e) {
+        print('Error adding payment image: $e');
+        throw Exception('Failed to attach payment image: ${e.toString()}');
       }
     }
 
     // Send request
-    print('Sending request to: ${request.url}');
+    print('Sending customer request to: ${request.url}');
     print('Request fields: ${request.fields}');
     print('Request files count: ${request.files.length}');
     
@@ -347,6 +337,22 @@ class _PaymentPageState extends State<PaymentPage> {
       }
     } else {
       throw Exception(data['message'] ?? 'Failed to place order');
+    }
+  }
+
+  String _getImageExtension(String extension) {
+    switch (extension.toLowerCase()) {
+      case 'jpg':
+      case 'jpeg':
+        return 'jpeg';
+      case 'png':
+        return 'png';
+      case 'gif':
+        return 'gif';
+      case 'webp':
+        return 'webp';
+      default:
+        return 'jpeg'; // Default to jpeg
     }
   }
 

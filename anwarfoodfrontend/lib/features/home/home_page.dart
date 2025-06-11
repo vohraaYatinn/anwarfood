@@ -81,9 +81,6 @@ class _HomePageState extends State<HomePage> {
     _loadAppName();
     _searchController.addListener(_onSearchChanged);
     _startAutoPlay();
-    if (!kIsWeb) {
-      _checkLocationPermission();
-    }
   }
 
   @override
