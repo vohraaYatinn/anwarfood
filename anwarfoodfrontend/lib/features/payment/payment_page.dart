@@ -182,81 +182,20 @@ class _PaymentPageState extends State<PaymentPage> {
       throw Exception('No retailer selected. Please select a retailer first.');
     }
 
-    // Get address ID from arguments passed to this page
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-    final addressId = args?['addressId'] as int?;
-    
-    if (addressId == null) {
-      throw Exception('No delivery address selected');
-    }
-
     print('Placing employee order with retailer phone: $_retailerPhone');
 
-    // Create multipart request
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('http://192.168.29.96:3000/api/employee/place-order'),
+    // For employees, only COD is allowed, so we use simple JSON request
+    final response = await http.post(
+      Uri.parse('http://localhost:3000/api/employee/place-order'),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'phoneNumber': _retailerPhone!,
+        'notes': _notesController.text.trim().isEmpty ? '' : _notesController.text.trim(),
+      }),
     );
-
-    // Add headers
-    request.headers.addAll({
-      'Authorization': 'Bearer $token',
-    });
-
-    // Add form fields
-    request.fields.addAll({
-      'phoneNumber': _retailerPhone!,
-      'addressId': addressId.toString(),
-      'paymentMethod': isPaidOnline ? 'online' : 'cod',
-      'notes': _notesController.text.trim().isEmpty ? '' : _notesController.text.trim(),
-    });
-
-    // Add payment screenshot if paid online
-    if (isPaidOnline && _paymentScreenshot != null) {
-      try {
-        if (kIsWeb) {
-          // Handle web platform
-          final xFile = _paymentScreenshot as XFile;
-          final bytes = await xFile.readAsBytes();
-          final fileName = xFile.name.isNotEmpty ? xFile.name : 'payment_image.jpg';
-          final extension = fileName.toLowerCase().split('.').last;
-          
-          request.files.add(
-            http.MultipartFile.fromBytes(
-              'paymentImage',
-              bytes,
-              filename: fileName,
-              contentType: http_parser.MediaType('image', _getImageExtension(extension)),
-            ),
-          );
-        } else {
-          // Handle mobile platforms
-          final file = _paymentScreenshot as File;
-          final fileName = file.path.split('/').last;
-          final extension = _getImageExtension(fileName.toLowerCase().split('.').last);
-          
-          request.files.add(
-            await http.MultipartFile.fromPath(
-              'paymentImage',
-              file.path,
-              filename: fileName,
-              contentType: http_parser.MediaType('image', extension),
-            ),
-          );
-        }
-      } catch (e) {
-        print('Error adding payment image: $e');
-        throw Exception('Failed to attach payment image: ${e.toString()}');
-      }
-    }
-
-    // Send request
-    print('Sending request to: ${request.url}');
-    print('Request fields: ${request.fields}');
-    print('Request files count: ${request.files.length}');
-    
-    final streamedResponse = await request.send();
-    final response = await http.Response.fromStream(streamedResponse);
     
     print('Employee order response status: ${response.statusCode}');
     print('Employee order response body: ${response.body}');
