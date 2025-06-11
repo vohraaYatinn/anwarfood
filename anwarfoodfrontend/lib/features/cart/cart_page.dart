@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
-
 import '../../services/product_service.dart';
-
+import '../../services/retailer_service.dart';
+import '../../models/user_model.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -20,6 +20,7 @@ class CartPage extends StatefulWidget {
 class _CartPageState extends State<CartPage> {
   final AuthService _authService = AuthService();
   final ProductService _productService = ProductService();
+  final RetailerService _retailerService = RetailerService();
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
   
@@ -28,6 +29,8 @@ class _CartPageState extends State<CartPage> {
   bool isLoading = true;
   String? error;
   Map<String, dynamic>? defaultAddress;
+  User? _user;
+  String? _selectedRetailerPhone;
   
   // Search related variables
   List<Map<String, dynamic>> _searchResults = [];
@@ -38,6 +41,7 @@ class _CartPageState extends State<CartPage> {
   @override
   void initState() {
     super.initState();
+    _loadUserData();
     fetchCartData();
     fetchDefaultAddress();
     _searchController.addListener(_onSearchChanged);
@@ -49,6 +53,35 @@ class _CartPageState extends State<CartPage> {
     _searchController.dispose();
     _debounce?.cancel();
     super.dispose();
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = await _authService.getUser();
+      setState(() {
+        _user = user;
+      });
+      
+      // Load retailer phone for employees
+      if (user?.role.toLowerCase() == 'employee') {
+        _loadSelectedRetailerPhone();
+      }
+    } catch (e) {
+      // Handle error silently
+    }
+  }
+
+  Future<void> _loadSelectedRetailerPhone() async {
+    try {
+      final phone = await _retailerService.getSelectedRetailerPhone();
+      if (mounted) {
+        setState(() {
+          _selectedRetailerPhone = phone;
+        });
+      }
+    } catch (e) {
+      print('Error loading retailer phone: $e');
+    }
   }
 
   void _onSearchChanged() {
@@ -544,34 +577,39 @@ class _CartPageState extends State<CartPage> {
               // Search Field - Always visible
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: Row(
+                child: Column(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        decoration: InputDecoration(
-                          hintText: 'Search for more products...',
-                          prefixIcon: const Icon(Icons.search),
-                          filled: true,
-                          fillColor: Colors.white,
-                          contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
+                    _buildRetailerBanner(),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _searchController,
+                            decoration: InputDecoration(
+                              hintText: 'Search for more products...',
+                              prefixIcon: const Icon(Icons.search),
+                              filled: true,
+                              fillColor: Colors.white,
+                              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                                                    child: IconButton(
-                                icon: const Icon(Icons.camera_alt_outlined),
-                                onPressed: _openBarcodeScanner,
-                              ),
+                        const SizedBox(width: 8),
+                        Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: IconButton(
+                            icon: const Icon(Icons.camera_alt_outlined),
+                            onPressed: _openBarcodeScanner,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -612,23 +650,25 @@ class _CartPageState extends State<CartPage> {
                                       child: Row(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          // Product Image
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: Image.network(
-                                              product['images']['image1'] ?? '',
-                                              width: 80,
-                                              height: 80,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) =>
-                                                  Container(
-                                                    width: 80,
-                                                    height: 80,
-                                                    color: Colors.grey[200],
-                                                    child: const Icon(Icons.image_not_supported, color: Colors.grey),
-                                                  ),
-                                            ),
-                                          ),
+                                                                    // Product Image
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              product['images']['image1'] != null && product['images']['image1'].toString().isNotEmpty
+                                  ? '${ApiConfig.baseUrl}/uploads/products/${product['images']['image1']}'
+                                  : '',
+                              width: 80,
+                              height: 80,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    width: 80,
+                                    height: 80,
+                                    color: Colors.grey[200],
+                                    child: const Icon(Icons.image_not_supported, color: Colors.grey),
+                                  ),
+                            ),
+                          ),
                                           const SizedBox(width: 12),
                                           Expanded(
                                             child: Column(
@@ -932,6 +972,87 @@ class _CartPageState extends State<CartPage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
             label: 'ACCOUNT',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRetailerBanner() {
+    if (_user?.role.toLowerCase() != 'employee' || _selectedRetailerPhone == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF9B1B1B).withOpacity(0.1),
+            const Color(0xFF9B1B1B).withOpacity(0.05),
+          ],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: const Color(0xFF9B1B1B).withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF9B1B1B),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Icon(
+              Icons.store,
+              color: Colors.white,
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ordering for Retailer',
+                  style: TextStyle(
+                    color: Color(0xFF9B1B1B),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Phone: $_selectedRetailerPhone',
+                  style: const TextStyle(
+                    color: Colors.black87,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.pushNamed(context, '/retailer-selection').then((result) {
+                if (result == true) {
+                  _loadSelectedRetailerPhone();
+                }
+              });
+            },
+            icon: const Icon(
+              Icons.edit,
+              color: Color(0xFF9B1B1B),
+              size: 20,
+            ),
           ),
         ],
       ),

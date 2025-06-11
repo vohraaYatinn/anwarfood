@@ -32,10 +32,12 @@ class _PaymentPageState extends State<PaymentPage> {
   bool _showImageUpload = false;
   Uint8List? _webImage; // For web platform
   String? _retailerPhone;
+  String? _userRole;
 
   @override
   void initState() {
     super.initState();
+    _loadUserRole();
     _loadBankDetails();
     _loadRetailerPhone();
   }
@@ -44,6 +46,17 @@ class _PaymentPageState extends State<PaymentPage> {
   void dispose() {
     _notesController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadUserRole() async {
+    try {
+      final user = await _authService.getUser();
+      setState(() {
+        _userRole = user?.role?.toLowerCase();
+      });
+    } catch (e) {
+      print('Error loading user role: $e');
+    }
   }
 
   Future<void> _loadRetailerPhone() async {
@@ -58,6 +71,14 @@ class _PaymentPageState extends State<PaymentPage> {
   }
 
   Future<void> _loadBankDetails() async {
+    // Only load bank details for non-employee users
+    if (_userRole == 'employee') {
+      setState(() {
+        _isBankDetailsLoading = false;
+      });
+      return;
+    }
+    
     try {
       final details = await _settingsService.getBankDetails();
       setState(() {
@@ -739,22 +760,24 @@ class _PaymentPageState extends State<PaymentPage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (_isBankDetailsLoading)
-                  const Center(child: CircularProgressIndicator())
-                else if (_error != null)
-                  Center(
-                    child: Column(
-                      children: [
-                        Text(_error!, style: const TextStyle(color: Colors.red)),
-                        const SizedBox(height: 8),
-                        ElevatedButton(
-                          onPressed: _loadBankDetails,
-                          child: const Text('Retry'),
-                        ),
-                      ],
-                    ),
-                  )
-                else if (_bankDetails != null) ...[
+                // Only show online payment options for non-employee users
+                if (_userRole != 'employee') ...[
+                  if (_isBankDetailsLoading)
+                    const Center(child: CircularProgressIndicator())
+                  else if (_error != null)
+                    Center(
+                      child: Column(
+                        children: [
+                          Text(_error!, style: const TextStyle(color: Colors.red)),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: _loadBankDetails,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (_bankDetails != null) ...[
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(16),
@@ -833,6 +856,7 @@ class _PaymentPageState extends State<PaymentPage> {
                     ),
                   ),
                 ],
+                ], // Close the _userRole != 'employee' condition
               ] else ...[
                 _buildImageUploadSection(),
               ],

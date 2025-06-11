@@ -268,14 +268,15 @@ const updateOrderStatus = async (req, res) => {
   }
 };
 
-// Place order on behalf of customer
+// Place order on behalf of retailer/customer using employee's cart
 const placeOrderForCustomer = async (req, res) => {
   const connection = await db.promise().getConnection();
   
   try {
     await connection.beginTransaction();
     
-    const { phoneNumber, paymentMethod, notes } = req.body;
+    const { phoneNumber, notes } = req.body;
+    const employeeUserId = req.user.USER_ID; // Get employee user ID from JWT token
 
     if (!phoneNumber) {
       await connection.rollback();
@@ -285,26 +286,26 @@ const placeOrderForCustomer = async (req, res) => {
       });
     }
 
-    // Find customer by phone number with complete user info
-    const [customers] = await connection.query(
+    // Find retailer/customer by phone number using user_info table
+    const [retailers] = await connection.query(
       `SELECT USER_ID, USERNAME, EMAIL, MOBILE, CITY, PROVINCE, ZIP, ADDRESS, USER_TYPE, ISACTIVE 
        FROM user_info 
        WHERE MOBILE = ? AND ISACTIVE = "Y"`,
       [phoneNumber]
     );
 
-    if (customers.length === 0) {
+    if (retailers.length === 0) {
       await connection.rollback();
       return res.status(404).json({
         success: false,
-        message: 'Customer not found with this phone number'
+        message: 'Retailer/Customer not found with this phone number'
       });
     }
 
-    const customer = customers[0];
-    const customerId = customer.USER_ID;
+    const retailer = retailers[0];
+    const retailerUserId = retailer.USER_ID;
 
-    // Get customer's cart items
+    // Get employee's cart items (employee who is logged in)
     const [cartItems] = await connection.query(`
       SELECT c.*, p.PROD_NAME, p.PROD_MRP, p.PROD_SP,
              pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
@@ -312,34 +313,42 @@ const placeOrderForCustomer = async (req, res) => {
       JOIN product p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
       WHERE c.USER_ID = ?
-    `, [customerId]);
+    `, [employeeUserId]);
 
     if (cartItems.length === 0) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: 'Customer cart is empty'
+        message: 'Employee cart is empty. Please add items to cart first.'
       });
     }
 
-    // Get default address for the customer
+    // Get default address for the retailer/customer
     const [defaultAddress] = await connection.query(
       `SELECT ADDRESS_ID, USER_ID, ADDRESS, CITY, STATE, COUNTRY, PINCODE, LANDMARK, ADDRESS_TYPE, IS_DEFAULT
        FROM customer_address 
        WHERE USER_ID = ? AND IS_DEFAULT = 1 AND DEL_STATUS != "Y" 
        LIMIT 1`,
-      [customerId]
+      [retailerUserId]
     );
     
+    // If no default address found, use retailer's info from user_info table
+    let orderAddress = null;
     if (defaultAddress.length === 0) {
-      await connection.rollback();
-      return res.status(400).json({
-        success: false,
-        message: 'No default address found for this customer. Please ensure customer has a default address set.'
-      });
+      // Create a default address object from user_info data
+      orderAddress = {
+        ADDRESS_ID: null,
+        ADDRESS: retailer.ADDRESS || 'Address not provided',
+        CITY: retailer.CITY || 'City not provided',
+        STATE: retailer.PROVINCE || 'State not provided',
+        COUNTRY: 'India', // Default country
+        PINCODE: retailer.ZIP || '000000',
+        LANDMARK: null,
+        ADDRESS_TYPE: 'Home'
+      };
+    } else {
+      orderAddress = defaultAddress[0];
     }
-
-    const orderAddress = defaultAddress[0];
 
     // Calculate order total
     const orderTotal = cartItems.reduce((total, item) => {
@@ -347,22 +356,22 @@ const placeOrderForCustomer = async (req, res) => {
     }, 0);
 
     // Generate order number
-    const orderNumber = 'ORD' + Date.now();
+    const orderNumber = 'EMP-ORD-' + Date.now();
 
-    // Create order with employee as CREATED_BY
+    // Create order with retailer as USER_ID and force payment method to COD only
     const [orderResult] = await connection.query(`
       INSERT INTO orders (
         ORDER_NUMBER, USER_ID, ORDER_TOTAL, ORDER_STATUS, 
         DELIVERY_ADDRESS, DELIVERY_CITY, DELIVERY_STATE, 
         DELIVERY_COUNTRY, DELIVERY_PINCODE, DELIVERY_LANDMARK,
-        PAYMENT_METHOD, ORDER_NOTES, CREATED_DATE, CREATED_BY, UPDATED_BY
-      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?)
+        PAYMENT_METHOD, ORDER_NOTES
+      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      orderNumber, customerId, orderTotal, 
+      orderNumber, retailerUserId, orderTotal, 
       orderAddress.ADDRESS, orderAddress.CITY, orderAddress.STATE,
       orderAddress.COUNTRY, orderAddress.PINCODE, orderAddress.LANDMARK,
-      paymentMethod || 'cod', notes || '',
-      req.user.USER_ID, req.user.USER_ID
+      'cod', // Force COD payment method
+      notes || 'Order placed by employee on behalf of retailer/customer'
     ]);
 
     const orderId = orderResult.insertId;
@@ -380,23 +389,26 @@ const placeOrderForCustomer = async (req, res) => {
       ]);
     }
 
-    // Clear customer's cart
-    await connection.query('DELETE FROM cart WHERE USER_ID = ?', [customerId]);
+    // Clear employee's cart (the person who placed the order)
+    await connection.query('DELETE FROM cart WHERE USER_ID = ?', [employeeUserId]);
 
     await connection.commit();
 
     res.status(201).json({
       success: true,
-      message: 'Order placed successfully for customer',
+      message: 'Order placed successfully for retailer/customer',
       data: {
         orderId: orderId,
         orderNumber: orderNumber,
-        customerId: customerId,
-        customerName: customer.USERNAME,
-        customerEmail: customer.EMAIL,
-        customerPhone: customer.MOBILE,
+        retailerUserId: retailerUserId,
+        retailerName: retailer.USERNAME,
+        retailerEmail: retailer.EMAIL,
+        retailerPhone: retailer.MOBILE,
+        retailerType: retailer.USER_TYPE,
         orderTotal: orderTotal,
-        createdBy: req.user.USERNAME,
+        paymentMethod: 'cod',
+        employeeId: employeeUserId,
+        employeeName: req.user.USERNAME,
         deliveryAddress: {
           addressId: orderAddress.ADDRESS_ID,
           address: orderAddress.ADDRESS,
@@ -412,10 +424,10 @@ const placeOrderForCustomer = async (req, res) => {
 
   } catch (error) {
     await connection.rollback();
-    console.error('Place order for customer error:', error);
+    console.error('Place order for retailer/customer error:', error);
     res.status(500).json({
       success: false,
-      message: 'Error placing order for customer',
+      message: 'Error placing order for retailer/customer',
       error: error.message
     });
   } finally {

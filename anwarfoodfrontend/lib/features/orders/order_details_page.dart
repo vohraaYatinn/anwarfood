@@ -122,8 +122,13 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
           });
         }
       } else {
-        // Mobile implementation - show choice dialog
-        await _showImageSourceDialog();
+        // Mobile implementation - for employees, only allow camera
+        if (_user?.role?.toLowerCase() == 'employee') {
+          await _pickImageFromSource(ImageSource.camera);
+        } else {
+          // For other roles, show choice dialog
+          await _showImageSourceDialog();
+        }
       }
     } catch (e) {
       if (mounted) {
