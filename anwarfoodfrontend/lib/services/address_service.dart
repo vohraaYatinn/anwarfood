@@ -44,6 +44,8 @@ class AddressService {
     required String addressType,
     required bool isDefault,
     String? landmark,
+    required double latitude,
+    required double longitude,
   }) async {
     try {
       final token = await _authService.getToken();
@@ -65,6 +67,8 @@ class AddressService {
           'pincode': pincode,
           'addressType': addressType,
           'isDefault': isDefault,
+          'latitude': latitude,
+          'longitude': longitude,
           if (landmark != null && landmark.isNotEmpty) 'landmark': landmark,
         }),
       );
@@ -90,6 +94,8 @@ class AddressService {
     required String addressType,
     required bool isDefault,
     String? landmark,
+    required double latitude,
+    required double longitude,
   }) async {
     try {
       final token = await _authService.getToken();
@@ -111,6 +117,8 @@ class AddressService {
           'pincode': pincode,
           'addressType': addressType,
           'isDefault': isDefault,
+          'latitude': latitude,
+          'longitude': longitude,
           if (landmark != null && landmark.isNotEmpty) 'landmark': landmark,
         }),
       );

@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../services/auth_service.dart';
 import '../../models/user_model.dart';
 import '../help/help_support_page.dart';
+import '../../config/api_config.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -14,11 +17,13 @@ class _ProfilePageState extends State<ProfilePage> {
   final _authService = AuthService();
   User? _user;
   bool _isLoading = true;
+  Map<String, dynamic>? _retailerData;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
+    _fetchRetailerData();
   }
 
   Future<void> _loadUserData() async {
@@ -27,6 +32,30 @@ class _ProfilePageState extends State<ProfilePage> {
       _user = user;
       _isLoading = false;
     });
+  }
+
+  Future<void> _fetchRetailerData() async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) return;
+
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/retailers/my-retailer'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final data = jsonDecode(response.body);
+      if (data['success'] == true) {
+        setState(() {
+          _retailerData = data['data'];
+        });
+      }
+    } catch (e) {
+      print('Error fetching retailer data: $e');
+    }
   }
 
   Future<void> _handleLogout() async {
@@ -61,6 +90,78 @@ class _ProfilePageState extends State<ProfilePage> {
         );
       }
     }
+  }
+
+  Widget _buildQRCode() {
+    final retailer = _retailerData?['retailer'];
+    if (retailer == null || retailer['BARCODE_URL'] == null) return const SizedBox();
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            spreadRadius: 1,
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 16.0),
+            child: Text(
+              'Shop QR Code',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF9B1B1B),
+              ),
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                  width: 2,
+                ),
+              ),
+              child: Image.network(
+                '${ApiConfig.baseUrl}/uploads/retailers/qrcode/${retailer['BARCODE_URL']}',
+                width: 150,
+                height: 150,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) => const Icon(
+                  Icons.qr_code,
+                  size: 150,
+                  color: Colors.grey,
+                ),
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16.0),
+            child: Text(
+              'Scan to view shop details',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -122,6 +223,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     fontSize: 15,
                   ),
                 ),
+                const SizedBox(height: 24),
+                if (_retailerData != null) _buildQRCode(),
                 const SizedBox(height: 24),
                 Expanded(
                   child: ListView(

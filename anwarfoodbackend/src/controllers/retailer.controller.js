@@ -57,6 +57,7 @@ const getRetailerInfo = async (req, res) => {
 const getRetailerByUserMobile = async (req, res) => {
   try {
     const userId = req.user.userId;
+    const { lat, long } = req.query;
 
     // First, get the user's mobile number
     const [users] = await db.promise().query(`
@@ -88,6 +89,17 @@ const getRetailerByUserMobile = async (req, res) => {
 
     const retailer = retailers[0];
     const retailerMobile = retailer.RET_MOBILE_NO;
+
+    // If lat and long are provided, update them in retailer_info
+    if (lat !== undefined && long !== undefined) {
+      await db.promise().query(
+        'UPDATE retailer_info SET RET_LAT = ?, RET_LONG = ? WHERE RET_ID = ?',
+        [lat, long, retailer.RET_ID]
+      );
+      // Also update the retailer object for response
+      retailer.RET_LAT = lat;
+      retailer.RET_LONG = long;
+    }
 
     // Get users with the same mobile number as the retailer
     const [retailerUsers] = await db.promise().query(`

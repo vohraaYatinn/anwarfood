@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../../services/order_service.dart';
 import '../../services/auth_service.dart';
 import '../../models/user_model.dart';
@@ -8,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import '../../config/api_config.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class OrderDetailsPage extends StatefulWidget {
   const OrderDetailsPage({Key? key}) : super(key: key);
@@ -1205,6 +1208,120 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
     );
   }
 
+  Widget _buildInvoiceSection() {
+    if (_order == null || 
+        _order!['ORDER_STATUS']?.toString().toLowerCase() != 'delivered' ||
+        _order!['INVOICE_URL'] == null ||
+        _order!['INVOICE_URL'].toString().isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final invoiceUrl = '${ApiConfig.baseUrl}${_order!['INVOICE_URL']}';
+    print('Invoice URL: $invoiceUrl'); // Debug print
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Invoice',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF9B1B1B).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.receipt_long,
+                  color: Color(0xFF9B1B1B),
+                  size: 24,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Order Invoice',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Invoice for order #${_order!['ORDER_NUMBER']}',
+                      style: const TextStyle(
+                        color: Colors.grey,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      try {
+                        final uri = Uri.parse(invoiceUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalNonBrowserApplication,
+                            webViewConfiguration: const WebViewConfiguration(
+                              enableJavaScript: true,
+                              enableDomStorage: true,
+                            ),
+                          );
+                        } else {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Could not download invoice. Please try viewing instead.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        }
+                      } catch (e) {
+                        print('Error launching URL: $e');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+                    icon: const Icon(Icons.download, size: 18),
+                    label: const Text('Download'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: const Color(0xFF9B1B1B),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -1294,11 +1411,13 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
                                       ),
                                     ),
                                     _buildPaymentSection(),
-                                    // Retailer Details (only for admin)
                                     _buildRetailerDetails(),
                                   ],
                                 ),
                               ),
+                              const SizedBox(height: 12),
+                              // Invoice Section
+                              _buildInvoiceSection(),
                               const SizedBox(height: 12),
                               // Delivery Address
                               Container(

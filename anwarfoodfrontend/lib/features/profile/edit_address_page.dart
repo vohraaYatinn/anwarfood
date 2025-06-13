@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import '../../models/address_model.dart';
 import '../../services/address_service.dart';
 
@@ -24,6 +27,13 @@ class _EditAddressPageState extends State<EditAddressPage> {
   bool _isLoading = false;
   String? _error;
 
+  // Google Maps related variables
+  GoogleMapController? _mapController;
+  late LatLng _currentPosition;
+  bool _isMapLoading = true;
+  Set<Marker> _markers = {};
+  bool _isLocationPermissionGranted = false;
+
   @override
   void initState() {
     super.initState();
@@ -36,10 +46,90 @@ class _EditAddressPageState extends State<EditAddressPage> {
     _landmarkController = TextEditingController(text: a.landmark);
     _selectedType = a.addressType.isNotEmpty ? a.addressType : 'Home';
     _isDefault = a.isDefault;
+
+    // Initialize map position with address coordinates or default
+    _currentPosition = LatLng(
+      a.latitude ?? 0.0,
+      a.longitude ?? 0.0,
+    );
+    _updateMarkers();
+    _checkLocationPermission();
+  }
+
+  Future<void> _checkLocationPermission() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      setState(() {
+        _error = 'Location services are disabled. Please enable location services.';
+      });
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        setState(() {
+          _error = 'Location permissions are denied. Please enable location permissions.';
+        });
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      setState(() {
+        _error = 'Location permissions are permanently denied. Please enable location permissions in settings.';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLocationPermissionGranted = true;
+      _isMapLoading = false;
+    });
+  }
+
+  void _updateMarkers() {
+    _markers = {
+      Marker(
+        markerId: const MarkerId('selected_location'),
+        position: _currentPosition,
+        draggable: true,
+        onDragEnd: (newPosition) {
+          setState(() {
+            _currentPosition = newPosition;
+          });
+          _getAddressFromLatLng(newPosition);
+        },
+      ),
+    };
+  }
+
+  Future<void> _getAddressFromLatLng(LatLng position) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        setState(() {
+          _addressController.text = '${place.street}, ${place.subLocality}';
+          _cityController.text = place.locality ?? '';
+          _stateController.text = place.administrativeArea ?? '';
+          _countryController.text = place.country ?? '';
+          _pincodeController.text = place.postalCode ?? '';
+        });
+      }
+    } catch (e) {
+      print('Error getting address: $e');
+    }
   }
 
   @override
   void dispose() {
+    _mapController?.dispose();
     _addressController.dispose();
     _cityController.dispose();
     _stateController.dispose();
@@ -66,6 +156,8 @@ class _EditAddressPageState extends State<EditAddressPage> {
         addressType: _selectedType,
         isDefault: _isDefault,
         landmark: _landmarkController.text,
+        latitude: _currentPosition.latitude,
+        longitude: _currentPosition.longitude,
       );
       if (mounted) {
         Navigator.pop(context, true);
@@ -105,245 +197,289 @@ class _EditAddressPageState extends State<EditAddressPage> {
         centerTitle: false,
       ),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Address Type',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(child: _buildTypeButton('Home')),
-                          const SizedBox(width: 12),
-                          Expanded(child: _buildTypeButton('Office')),
-                          const SizedBox(width: 12),
-                          Expanded(child: _buildTypeButton('Other')),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Address Details',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _addressController,
-                        decoration: InputDecoration(
-                          hintText: 'Street Address',
-                          filled: true,
-                          fillColor: const Color(0xFFF8F6F9),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter street address';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _landmarkController,
-                        decoration: InputDecoration(
-                          hintText: 'Landmark (Optional)',
-                          filled: true,
-                          fillColor: const Color(0xFFF8F6F9),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _cityController,
-                        decoration: InputDecoration(
-                          hintText: 'City',
-                          filled: true,
-                          fillColor: const Color(0xFFF8F6F9),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter city';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _stateController,
-                        decoration: InputDecoration(
-                          hintText: 'State',
-                          filled: true,
-                          fillColor: const Color(0xFFF8F6F9),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter state';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _countryController,
-                        decoration: InputDecoration(
-                          hintText: 'Country',
-                          filled: true,
-                          fillColor: const Color(0xFFF8F6F9),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter country';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _pincodeController,
-                        decoration: InputDecoration(
-                          hintText: 'Pincode',
-                          filled: true,
-                          fillColor: const Color(0xFFF8F6F9),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter pincode';
-                          }
-                          if (value.length < 6) {
-                            return 'Pincode must be at least 6 digits';
-                          }
-                          return null;
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      const Text(
-                        'Set as Default Address',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w500,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const Spacer(),
-                      Switch(
-                        value: _isDefault,
-                        onChanged: (value) {
-                          setState(() {
-                            _isDefault = value;
-                          });
-                        },
-                        activeColor: const Color(0xFF9B1B1B),
-                      ),
-                    ],
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
+        child: Column(
+          children: [
+            Container(
+              height: 200,
+              margin: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
                   ),
                 ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF9B1B1B),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _isMapLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : GoogleMap(
+                        initialCameraPosition: CameraPosition(
+                          target: _currentPosition,
+                          zoom: 15,
+                        ),
+                        onMapCreated: (controller) {
+                          _mapController = controller;
+                        },
+                        markers: _markers,
+                        myLocationEnabled: true,
+                        myLocationButtonEnabled: true,
+                        zoomControlsEnabled: true,
+                        mapToolbarEnabled: false,
+                        onTap: (position) {
+                          setState(() {
+                            _currentPosition = position;
+                            _updateMarkers();
+                          });
+                          _getAddressFromLatLng(position);
+                        },
+                      ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
                         borderRadius: BorderRadius.circular(12),
                       ),
-                    ),
-                    onPressed: _isLoading ? null : _saveAddress,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text(
-                            'Save Changes',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Address Type',
                             style: TextStyle(
-                              color: Colors.white,
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
                             ),
                           ),
-                  ),
+                          const SizedBox(height: 12),
+                          Row(
+                            children: [
+                              Expanded(child: _buildTypeButton('Home')),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildTypeButton('Office')),
+                              const SizedBox(width: 12),
+                              Expanded(child: _buildTypeButton('Other')),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Address Details',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _addressController,
+                            decoration: InputDecoration(
+                              hintText: 'Street Address',
+                              filled: true,
+                              fillColor: const Color(0xFFF8F6F9),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter street address';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _landmarkController,
+                            decoration: InputDecoration(
+                              hintText: 'Landmark (Optional)',
+                              filled: true,
+                              fillColor: const Color(0xFFF8F6F9),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _cityController,
+                            decoration: InputDecoration(
+                              hintText: 'City',
+                              filled: true,
+                              fillColor: const Color(0xFFF8F6F9),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter city';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _stateController,
+                            decoration: InputDecoration(
+                              hintText: 'State',
+                              filled: true,
+                              fillColor: const Color(0xFFF8F6F9),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter state';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _countryController,
+                            decoration: InputDecoration(
+                              hintText: 'Country',
+                              filled: true,
+                              fillColor: const Color(0xFFF8F6F9),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter country';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: _pincodeController,
+                            decoration: InputDecoration(
+                              hintText: 'Pincode',
+                              filled: true,
+                              fillColor: const Color(0xFFF8F6F9),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide.none,
+                              ),
+                            ),
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter pincode';
+                              }
+                              if (value.length < 6) {
+                                return 'Pincode must be at least 6 digits';
+                              }
+                              return null;
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          const Text(
+                            'Set as Default Address',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 16,
+                            ),
+                          ),
+                          const Spacer(),
+                          Switch(
+                            value: _isDefault,
+                            onChanged: (value) {
+                              setState(() {
+                                _isDefault = value;
+                              });
+                            },
+                            activeColor: const Color(0xFF9B1B1B),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_error != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _error!,
+                        style: const TextStyle(color: Colors.red),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF9B1B1B),
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: _isLoading ? null : _saveAddress,
+                        child: _isLoading
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text(
+                                'Save Address',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );

@@ -354,6 +354,11 @@ class _CartPageState extends State<CartPage> {
         
         // Refresh cart data
         await fetchCartData();
+        
+        // Return to cart page
+        if (mounted) {
+          Navigator.pop(context, true);
+        }
         return data['data']; // Return the product data for the scanner
       } else {
         ScaffoldMessenger.of(context).showSnackBar(

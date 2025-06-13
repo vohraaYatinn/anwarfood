@@ -247,6 +247,72 @@ const updateOrderStatus = async (req, res) => {
       [status.toLowerCase(), paymentImage, orderId]
     );
 
+    // If status is delivered, generate invoice PDF and QR code, and insert into invoice_master and invoice_detail
+    if (status.toLowerCase() === 'delivered') {
+      const [orderDetails] = await db.promise().query(
+        `SELECT o.*, u.USERNAME, u.MOBILE, u.EMAIL, u.ADDRESS as USER_ADDRESS, u.CITY, u.PROVINCE, u.ZIP
+         FROM orders o
+         JOIN user_info u ON o.USER_ID = u.USER_ID
+         WHERE o.ORDER_ID = ?`,
+        [orderId]
+      );
+      const order = orderDetails[0];
+      const [orderItems] = await db.promise().query(
+        `SELECT oi.*, p.PROD_NAME, p.PROD_CODE, p.PROD_HSN_CODE, p.PROD_MRP, p.PROD_SP, p.PROD_IMAGE_1, p.PROD_IMAGE_2, p.PROD_IMAGE_3, pu.PU_PROD_UNIT
+         FROM order_items oi
+         JOIN product p ON oi.PROD_ID = p.PROD_ID
+         JOIN product_unit pu ON oi.UNIT_ID = pu.PU_ID
+         WHERE oi.ORDER_ID = ?`,
+        [orderId]
+      );
+      // Generate invoice number (e.g., INV + orderId)
+      const invoiceNumber = `INV${orderId}`;
+      // Generate PDF and QR code
+      const invoicePath = await require('../utils/invoiceGenerator').generateInvoicePDF({ order, orderItems, invoiceNumber });
+      // Insert into invoice_master
+      const [invoiceResult] = await db.promise().query(
+        `INSERT INTO invoice_master (
+          INVM_NO, INVM_TRANS_ID, INVM_DATE, INVM_CUST_ID, INVM_CUST_NAME, INVM_CUST_ADDRESS, INVM_CUST_MOBILE, INVM_CUST_GST,
+          INVM_TOT_CGST, INVM_TOT_SGST, INVM_TOT_IGST, INVM_TOT_DISCOUNT_AMOUNT, INVM_TOT_TAX_AMOUNT, INVM_TOT_AMOUNT, INVM_TOT_NET_PAYABLE,
+          INVM_STATUS, INVM_PAYMENT_MODE, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE
+        ) VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          invoiceNumber,
+          `TR${orderId}`,
+          order.USER_ID,
+          order.USERNAME,
+          order.USER_ADDRESS || order.DELIVERY_ADDRESS,
+          order.MOBILE,
+          '', // INVM_CUST_GST
+          0, // INVM_TOT_CGST
+          0, // INVM_TOT_SGST
+          0, // INVM_TOT_IGST
+          0, // INVM_TOT_DISCOUNT_AMOUNT
+          0, // INVM_TOT_TAX_AMOUNT
+          order.ORDER_TOTAL,
+          order.ORDER_TOTAL,
+          'active',
+          'cod',
+          req.user.USERNAME || 'system',
+          req.user.USERNAME || 'system'
+        ]
+      );
+      const invoiceId = invoiceResult.insertId;
+      // Insert into invoice_detail for each item
+      for (const item of orderItems) {
+        await db.promise().query(
+          `INSERT INTO invoice_detail (INVD_INVM_ID, INVD_PROD_ID, INVD_PROD_CODE, INVD_PROD_NAME, INVD_PROD_UNIT, INVD_QTY, INVD_HSN_CODE, INVD_MRP, INVD_SP, INVD_DISCOUNT_PERCENTAGE, INVD_DISCOUNT_AMOUNT, INVD_CGST, INVD_SGST, INVD_IGST, INVD_PROD_IMAGE_1, INVD_PROD_IMAGE_2, INVD_PROD_IMAGE_3, INVD_TAMOUNT, INVD_PROD_STATUS, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
+          [invoiceId, item.PROD_ID, item.PROD_CODE, item.PROD_NAME, item.PU_PROD_UNIT, item.QUANTITY, item.PROD_HSN_CODE, item.PROD_MRP, item.PROD_SP, item.PROD_IMAGE_1, item.PROD_IMAGE_2, item.PROD_IMAGE_3, item.TOTAL_PRICE, req.user.USERNAME || 'system', req.user.USERNAME || 'system']
+        );
+      }
+      // Update the orders table with the invoice URL
+      await db.promise().query(
+        'UPDATE orders SET INVOICE_URL = ? WHERE ORDER_ID = ?',
+        [`/uploads/invoice/${invoiceNumber}.pdf`, orderId]
+      );
+    }
+
     res.json({
       success: true,
       message: 'Order status updated successfully',
@@ -389,36 +455,85 @@ const placeOrderForCustomer = async (req, res) => {
       ]);
     }
 
-    // Clear employee's cart (the person who placed the order)
+    // Clear employee's cart
     await connection.query('DELETE FROM cart WHERE USER_ID = ?', [employeeUserId]);
 
+    // Generate invoice immediately after order creation
+    const [orderDetails] = await connection.query(
+      `SELECT o.*, u.USERNAME, u.MOBILE, u.EMAIL, u.ADDRESS as USER_ADDRESS, u.CITY, u.PROVINCE, u.ZIP
+       FROM orders o
+       JOIN user_info u ON o.USER_ID = u.USER_ID
+       WHERE o.ORDER_ID = ?`,
+      [orderId]
+    );
+    const order = orderDetails[0];
+    const [orderItems] = await connection.query(
+      `SELECT oi.*, p.PROD_NAME, p.PROD_CODE, p.PROD_HSN_CODE, p.PROD_MRP, p.PROD_SP, p.PROD_IMAGE_1, p.PROD_IMAGE_2, p.PROD_IMAGE_3, pu.PU_PROD_UNIT
+       FROM order_items oi
+       JOIN product p ON oi.PROD_ID = p.PROD_ID
+       JOIN product_unit pu ON oi.UNIT_ID = pu.PU_ID
+       WHERE oi.ORDER_ID = ?`,
+      [orderId]
+    );
+    // Generate invoice number
+    const invoiceNumber = `INV${orderId}`;
+    // Generate PDF and QR code
+    const invoicePath = await require('../utils/invoiceGenerator').generateInvoicePDF({ order, orderItems, invoiceNumber });
+    // Insert into invoice_master
+    const [invoiceResult] = await connection.query(
+      `INSERT INTO invoice_master (
+        INVM_NO, INVM_TRANS_ID, INVM_DATE, INVM_CUST_ID, INVM_CUST_NAME, INVM_CUST_ADDRESS, INVM_CUST_MOBILE, INVM_CUST_GST,
+        INVM_TOT_CGST, INVM_TOT_SGST, INVM_TOT_IGST, INVM_TOT_DISCOUNT_AMOUNT, INVM_TOT_TAX_AMOUNT, INVM_TOT_AMOUNT, INVM_TOT_NET_PAYABLE,
+        INVM_STATUS, INVM_PAYMENT_MODE, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE
+      ) VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        invoiceNumber,
+        `TR${orderId}`,
+        order.USER_ID,
+        order.USERNAME,
+        order.USER_ADDRESS || order.DELIVERY_ADDRESS,
+        order.MOBILE,
+        '', // INVM_CUST_GST
+        0, // INVM_TOT_CGST
+        0, // INVM_TOT_SGST
+        0, // INVM_TOT_IGST
+        0, // INVM_TOT_DISCOUNT_AMOUNT
+        0, // INVM_TOT_TAX_AMOUNT
+        order.ORDER_TOTAL,
+        order.ORDER_TOTAL,
+        'active',
+        'cod',
+        req.user.USERNAME || 'system',
+        req.user.USERNAME || 'system'
+      ]
+    );
+    const invoiceId = invoiceResult.insertId;
+    // Insert into invoice_detail for each item
+    for (const item of orderItems) {
+      await connection.query(
+        `INSERT INTO invoice_detail (INVD_INVM_ID, INVD_PROD_ID, INVD_PROD_CODE, INVD_PROD_NAME, INVD_PROD_UNIT, INVD_QTY, INVD_HSN_CODE, INVD_MRP, INVD_SP, INVD_DISCOUNT_PERCENTAGE, INVD_DISCOUNT_AMOUNT, INVD_CGST, INVD_SGST, INVD_IGST, INVD_PROD_IMAGE_1, INVD_PROD_IMAGE_2, INVD_PROD_IMAGE_3, INVD_TAMOUNT, INVD_PROD_STATUS, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
+        [invoiceId, item.PROD_ID, item.PROD_CODE, item.PROD_NAME, item.PU_PROD_UNIT, item.QUANTITY, item.PROD_HSN_CODE, item.PROD_MRP, item.PROD_SP, item.PROD_IMAGE_1, item.PROD_IMAGE_2, item.PROD_IMAGE_3, item.TOTAL_PRICE, req.user.USERNAME || 'system', req.user.USERNAME || 'system']
+      );
+    }
+    // Update the orders table with the invoice URL
+    await connection.query(
+      'UPDATE orders SET INVOICE_URL = ? WHERE ORDER_ID = ?',
+      [`/uploads/invoice/${invoiceNumber}.pdf`, orderId]
+    );
+
+    // Commit transaction
     await connection.commit();
 
-    res.status(201).json({
+    res.json({
       success: true,
-      message: 'Order placed successfully for retailer/customer',
+      message: 'Order placed successfully',
       data: {
-        orderId: orderId,
-        orderNumber: orderNumber,
-        retailerUserId: retailerUserId,
-        retailerName: retailer.USERNAME,
-        retailerEmail: retailer.EMAIL,
-        retailerPhone: retailer.MOBILE,
-        retailerType: retailer.USER_TYPE,
-        orderTotal: orderTotal,
-        paymentMethod: 'cod',
-        employeeId: employeeUserId,
-        employeeName: req.user.USERNAME,
-        deliveryAddress: {
-          addressId: orderAddress.ADDRESS_ID,
-          address: orderAddress.ADDRESS,
-          city: orderAddress.CITY,
-          state: orderAddress.STATE,
-          country: orderAddress.COUNTRY,
-          pincode: orderAddress.PINCODE,
-          landmark: orderAddress.LANDMARK,
-          addressType: orderAddress.ADDRESS_TYPE
-        }
+        orderId,
+        orderNumber,
+        orderTotal,
+        invoiceNumber,
+        invoicePath: `/uploads/invoice/${invoiceNumber}.pdf`
       }
     });
 
