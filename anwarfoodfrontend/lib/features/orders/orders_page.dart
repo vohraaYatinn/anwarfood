@@ -6,6 +6,13 @@ import 'package:intl/intl.dart';
 import 'dart:async';
 import '../../services/auth_service.dart';
 import '../../models/user_model.dart';
+import 'package:mobile_scanner/mobile_scanner.dart' hide Address;
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import '../../config/api_config.dart';
+import '../../services/retailer_service.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({Key? key}) : super(key: key);
@@ -18,6 +25,7 @@ class _OrdersPageState extends State<OrdersPage> {
   final OrderService _orderService = OrderService();
   final AddressService _addressService = AddressService();
   final AuthService _authService = AuthService();
+  final RetailerService _retailerService = RetailerService();
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
   List<Map<String, dynamic>> _searchResults = [];
@@ -222,6 +230,107 @@ class _OrdersPageState extends State<OrdersPage> {
     }
   }
 
+  Future<void> _openQRCodeScanner() async {
+    // Check camera permission
+    final status = await Permission.camera.status;
+    if (!status.isGranted) {
+      final result = await Permission.camera.request();
+      if (!result.isGranted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Camera permission is required for QR code scanning'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+    }
+
+    // Navigate to QR scanner
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => QRCodeScannerPage(
+          onQRCodeScanned: _getRetailerByPhone,
+          title: 'Scan Retailer QR Code',
+        ),
+      ),
+    );
+  }
+
+  Future<void> _getRetailerByPhone(String qrCode) async {
+    try {
+      print('Scanning QR code: $qrCode');
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      print('Making API call to: ${ApiConfig.baseUrl}/api/employee/get-retailer-by-phone/$qrCode');
+      
+      // Get retailer by phone number from QR code
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/employee/get-retailer-by-phone/$qrCode'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      print('API Response Status: ${response.statusCode}');
+      print('API Response Body: ${response.body}');
+
+      final data = jsonDecode(response.body);
+      
+      if (data['success'] == true) {
+        final retailerData = data['data'];
+        final phoneNumber = retailerData['RET_MOBILE_NO'].toString();
+        
+        print('Retailer found, setting for ordering: ${retailerData['RET_NAME']} - $phoneNumber');
+        
+        // Set retailer for ordering using the direct method
+        await _setSelectedRetailerPhone(phoneNumber);
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Retailer selected: ${retailerData['RET_NAME']}'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+          
+          // Navigate to home page
+          Navigator.pushNamedAndRemoveUntil(
+            context,
+            '/home',
+            (route) => false,
+          );
+        }
+      } else {
+        print('Retailer not found: ${data['message']}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(data['message'] ?? 'Retailer not found'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print('Error in _getRetailerByPhone: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -313,10 +422,12 @@ class _OrdersPageState extends State<OrdersPage> {
                         decoration: InputDecoration(
                           hintText: 'Search your orders',
                           prefixIcon: const Icon(Icons.search),
-                          suffixIcon: IconButton(
-                            icon: const Icon(Icons.camera_alt_outlined),
-                            onPressed: () {},
-                          ),
+                          suffixIcon: _user?.role.toLowerCase() == 'employee'
+                              ? IconButton(
+                                  icon: const Icon(Icons.camera_alt_outlined),
+                                  onPressed: _openQRCodeScanner,
+                                )
+                              : null,
                           filled: true,
                           fillColor: Colors.white,
                           contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
@@ -643,4 +754,160 @@ class _OrdersPageState extends State<OrdersPage> {
           : null,
     );
   }
-} 
+
+  Future<void> _setSelectedRetailerPhone(String phoneNumber) async {
+    try {
+      // Use SharedPreferences to store the selected retailer phone
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_retailer_phone', phoneNumber);
+    } catch (e) {
+      print('Error setting retailer phone: $e');
+      rethrow;
+    }
+  }
+}
+
+class QRCodeScannerPage extends StatefulWidget {
+  final Future<void> Function(String) onQRCodeScanned;
+  final String title;
+  
+  const QRCodeScannerPage({
+    Key? key,
+    required this.onQRCodeScanned,
+    this.title = 'Scan QR Code',
+  }) : super(key: key);
+
+  @override
+  _QRCodeScannerPageState createState() => _QRCodeScannerPageState();
+}
+
+class _QRCodeScannerPageState extends State<QRCodeScannerPage> {
+  MobileScannerController cameraController = MobileScannerController();
+  bool isProcessing = false;
+
+  @override
+  void dispose() {
+    cameraController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: Text(
+          widget.title,
+          style: const TextStyle(color: Colors.white),
+        ),
+        actions: [
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.torchState,
+              builder: (context, state, child) {
+                switch (state) {
+                  case TorchState.off:
+                    return const Icon(Icons.flash_off, color: Colors.white);
+                  case TorchState.on:
+                    return const Icon(Icons.flash_on, color: Colors.yellow);
+                }
+              },
+            ),
+            onPressed: () => cameraController.toggleTorch(),
+          ),
+          IconButton(
+            icon: ValueListenableBuilder(
+              valueListenable: cameraController.cameraFacingState,
+              builder: (context, state, child) {
+                return const Icon(Icons.camera_front, color: Colors.white);
+              },
+            ),
+            onPressed: () => cameraController.switchCamera(),
+          ),
+        ],
+      ),
+      body: Stack(
+        children: [
+          MobileScanner(
+            controller: cameraController,
+            onDetect: (capture) async {
+              if (!isProcessing) {
+                final List<Barcode> barcodes = capture.barcodes;
+                if (barcodes.isNotEmpty) {
+                  final barcode = barcodes.first;
+                  if (barcode.rawValue != null) {
+                    setState(() {
+                      isProcessing = true;
+                    });
+                    
+                    try {
+                      print('QR Code detected: ${barcode.rawValue!}');
+                      
+                      // Close the scanner first
+                      Navigator.pop(context);
+                      
+                      // Then call the callback function
+                      await widget.onQRCodeScanned(barcode.rawValue!);
+                    } catch (e) {
+                      print('Error processing QR code: $e');
+                      // Reset processing state on error
+                      if (mounted) {
+                        setState(() {
+                          isProcessing = false;
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            },
+          ),
+                     // Overlay with scanning area
+           Container(
+             child: Center(
+               child: Container(
+                 width: 250,
+                 height: 250,
+                 decoration: BoxDecoration(
+                   border: Border.all(
+                     color: const Color(0xFF9B1B1B),
+                     width: 3,
+                   ),
+                   borderRadius: BorderRadius.circular(10),
+                 ),
+               ),
+             ),
+           ),
+          // Instructions
+          Positioned(
+            bottom: 100,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                isProcessing 
+                    ? 'Processing...' 
+                    : 'Place the QR code inside the frame to scan',
+                style: TextStyle(
+                  color: isProcessing ? Colors.yellow : Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+ 
