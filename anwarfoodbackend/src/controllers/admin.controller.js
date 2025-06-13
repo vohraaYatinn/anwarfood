@@ -920,40 +920,171 @@ const editRetailer = async (req, res) => {
   try {
     const { retailerId } = req.params;
     const {
-      retCode,
-      retType,
-      retName,
-      retShopName,
-      retMobileNo,
-      retAddress,
-      retPinCode,
-      retEmailId,
-      retPhoto,
-      retCountry,
-      retState,
-      retCity,
-      retGstNo,
-      retLat,
-      retLong,
-      retDelStatus,
-      shopOpenStatus
+      RET_CODE,
+      RET_TYPE,
+      RET_NAME,
+      RET_SHOP_NAME,
+      RET_MOBILE_NO,
+      RET_ADDRESS,
+      RET_PIN_CODE,
+      RET_EMAIL_ID,
+      RET_COUNTRY,
+      RET_STATE,
+      RET_CITY,
+      RET_GST_NO,
+      RET_LAT,
+      RET_LONG,
+      RET_DEL_STATUS,
+      SHOP_OPEN_STATUS,
+      BARCODE_URL
     } = req.body;
 
-    const [result] = await db.promise().query(
-      `UPDATE retailer_info SET 
-        RET_CODE = ?, RET_TYPE = ?, RET_NAME = ?, RET_SHOP_NAME = ?, RET_MOBILE_NO = ?,
-        RET_ADDRESS = ?, RET_PIN_CODE = ?, RET_EMAIL_ID = ?, RET_PHOTO = ?,
-        RET_COUNTRY = ?, RET_STATE = ?, RET_CITY = ?, RET_GST_NO = ?,
-        RET_LAT = ?, RET_LONG = ?, RET_DEL_STATUS = ?, SHOP_OPEN_STATUS = ?,
-        UPDATED_BY = ?, UPDATED_DATE = NOW()
-      WHERE RET_ID = ?`,
-      [
-        retCode, retType, retName, retShopName, retMobileNo, retAddress,
-        retPinCode, retEmailId, retPhoto, retCountry, retState, retCity,
-        retGstNo, retLat, retLong, retDelStatus, shopOpenStatus,
-        req.user.USERNAME, retailerId
-      ]
-    );
+    // Validate retailer exists
+    const [existingRetailer] = await db.promise().query(`
+      SELECT RET_ID FROM retailer_info 
+      WHERE RET_ID = ?
+    `, [retailerId]);
+
+    if (existingRetailer.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Retailer not found'
+      });
+    }
+
+    // Build dynamic update query based on provided fields
+    const updateFields = [];
+    const updateValues = [];
+
+    if (RET_CODE !== undefined) {
+      updateFields.push('RET_CODE = ?');
+      updateValues.push(RET_CODE);
+    }
+    if (RET_TYPE !== undefined) {
+      updateFields.push('RET_TYPE = ?');
+      updateValues.push(RET_TYPE);
+    }
+    if (RET_NAME !== undefined) {
+      updateFields.push('RET_NAME = ?');
+      updateValues.push(RET_NAME);
+    }
+    if (RET_SHOP_NAME !== undefined) {
+      updateFields.push('RET_SHOP_NAME = ?');
+      updateValues.push(RET_SHOP_NAME);
+    }
+    if (RET_MOBILE_NO !== undefined) {
+      // Validate mobile number format
+      const mobileRegex = /^[6-9]\d{9}$/;
+      if (!mobileRegex.test(RET_MOBILE_NO)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid mobile number format'
+        });
+      }
+      updateFields.push('RET_MOBILE_NO = ?');
+      updateValues.push(RET_MOBILE_NO);
+    }
+    if (RET_ADDRESS !== undefined) {
+      updateFields.push('RET_ADDRESS = ?');
+      updateValues.push(RET_ADDRESS);
+    }
+    if (RET_PIN_CODE !== undefined) {
+      // Validate pin code format
+      const pinCodeRegex = /^\d{6}$/;
+      if (!pinCodeRegex.test(RET_PIN_CODE)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid pin code format'
+        });
+      }
+      updateFields.push('RET_PIN_CODE = ?');
+      updateValues.push(RET_PIN_CODE);
+    }
+    if (RET_EMAIL_ID !== undefined) {
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (RET_EMAIL_ID && !emailRegex.test(RET_EMAIL_ID)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid email format'
+        });
+      }
+      updateFields.push('RET_EMAIL_ID = ?');
+      updateValues.push(RET_EMAIL_ID);
+    }
+    
+    // Handle profile image upload
+    if (req.uploadedFile) {
+      updateFields.push('RET_PHOTO = ?');
+      updateValues.push(req.uploadedFile.filename);
+    }
+    
+    if (RET_COUNTRY !== undefined) {
+      updateFields.push('RET_COUNTRY = ?');
+      updateValues.push(RET_COUNTRY);
+    }
+    if (RET_STATE !== undefined) {
+      updateFields.push('RET_STATE = ?');
+      updateValues.push(RET_STATE);
+    }
+    if (RET_CITY !== undefined) {
+      updateFields.push('RET_CITY = ?');
+      updateValues.push(RET_CITY);
+    }
+    if (RET_GST_NO !== undefined) {
+      // Validate GST number format (basic validation)
+      if (RET_GST_NO && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$/.test(RET_GST_NO)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid GST number format'
+        });
+      }
+      updateFields.push('RET_GST_NO = ?');
+      updateValues.push(RET_GST_NO);
+    }
+    if (RET_LAT !== undefined) {
+      updateFields.push('RET_LAT = ?');
+      updateValues.push(RET_LAT);
+    }
+    if (RET_LONG !== undefined) {
+      updateFields.push('RET_LONG = ?');
+      updateValues.push(RET_LONG);
+    }
+    if (RET_DEL_STATUS !== undefined) {
+      updateFields.push('RET_DEL_STATUS = ?');
+      updateValues.push(RET_DEL_STATUS);
+    }
+    if (SHOP_OPEN_STATUS !== undefined) {
+      updateFields.push('SHOP_OPEN_STATUS = ?');
+      updateValues.push(SHOP_OPEN_STATUS);
+    }
+    if (BARCODE_URL !== undefined) {
+      updateFields.push('BARCODE_URL = ?');
+      updateValues.push(BARCODE_URL);
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No fields provided for update'
+      });
+    }
+
+    // Always update UPDATED_DATE and UPDATED_BY
+    updateFields.push('UPDATED_DATE = NOW()');
+    updateFields.push('UPDATED_BY = ?');
+    updateValues.push(req.user.USERNAME);
+
+    // Add retailer ID for WHERE clause
+    updateValues.push(retailerId);
+
+    const updateQuery = `
+      UPDATE retailer_info 
+      SET ${updateFields.join(', ')}
+      WHERE RET_ID = ?
+    `;
+
+    const [result] = await db.promise().query(updateQuery, updateValues);
 
     if (result.affectedRows === 0) {
       return res.status(404).json({
@@ -962,12 +1093,31 @@ const editRetailer = async (req, res) => {
       });
     }
 
+    // Fetch updated retailer data
+    const [updatedRetailer] = await db.promise().query(`
+      SELECT * FROM retailer_info 
+      WHERE RET_ID = ?
+    `, [retailerId]);
+
+    // Add photo URL if photo exists
+    const retailerData = updatedRetailer[0];
+    if (retailerData.RET_PHOTO) {
+      retailerData.RET_PHOTO_URL = `http://localhost:3000/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
+    }
+
     res.json({
       success: true,
-      message: 'Retailer updated successfully'
+      message: 'Retailer updated successfully by admin',
+      data: retailerData,
+      uploadedFile: req.uploadedFile ? {
+        filename: req.uploadedFile.filename,
+        url: `http://localhost:3000/uploads/retailers/profiles/${req.uploadedFile.filename}`
+      } : null,
+      updated_by: req.user.USERNAME,
+      updated_fields: updateFields.length - 2 // Exclude UPDATED_DATE and UPDATED_BY from count
     });
   } catch (error) {
-    console.error('Edit retailer error:', error);
+    console.error('Admin edit retailer error:', error);
     res.status(500).json({
       success: false,
       message: 'Error updating retailer',

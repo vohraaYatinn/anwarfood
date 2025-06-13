@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/retailer_service.dart';
+import '../../services/auth_service.dart';
+import '../../models/user_model.dart';
 
 class RetailerListPage extends StatefulWidget {
   const RetailerListPage({Key? key}) : super(key: key);
@@ -12,6 +14,7 @@ class RetailerListPage extends StatefulWidget {
 
 class _RetailerListPageState extends State<RetailerListPage> {
   final RetailerService _retailerService = RetailerService();
+  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
   String? _error;
@@ -21,13 +24,29 @@ class _RetailerListPageState extends State<RetailerListPage> {
   final int _limit = 5;
   final ScrollController _scrollController = ScrollController();
   bool _isSearching = false;
+  User? _user;
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
     _loadRetailers();
     _scrollController.addListener(_onScroll);
     _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = await _authService.getUser();
+      print('Loaded user data: ${user?.username}, Role: ${user?.role}');
+      if (mounted) {
+        setState(() {
+          _user = user;
+        });
+      }
+    } catch (e) {
+      print('Error loading user data: $e');
+    }
   }
 
   @override
@@ -127,56 +146,83 @@ class _RetailerListPageState extends State<RetailerListPage> {
   }
 
   Future<void> _openQRScanner() async {
-    // Check camera permission
-    final status = await Permission.camera.status;
-    if (!status.isGranted) {
-      final result = await Permission.camera.request();
-      if (!result.isGranted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Camera permission is required for QR code scanning'),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
+    print('Opening QR scanner...');
+    print('User role: ${_user?.role}');
+    
+    try {
+      // Check camera permission
+      final status = await Permission.camera.status;
+      print('Camera permission status: $status');
+      
+      if (!status.isGranted) {
+        print('Requesting camera permission...');
+        final result = await Permission.camera.request();
+        print('Camera permission result: $result');
+        
+        if (!result.isGranted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Camera permission is required for QR code scanning'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
       }
-    }
 
-    // Navigate to QR scanner
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => QRScannerPage(
-          onQRScanned: _getRetailerByQR,
-          title: 'Scan Retailer QR Code',
+      print('Navigating to QR scanner page...');
+      // Navigate to QR scanner
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => QRScannerPage(
+            onQRScanned: _getRetailerByQR,
+            title: 'Scan Retailer QR Code',
+          ),
         ),
-      ),
-    );
+      );
+      print('Returned from QR scanner page');
+    } catch (e) {
+      print('Error opening QR scanner: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error opening scanner: ${e.toString()}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   Future<void> _getRetailerByQR(String qrValue) async {
     try {
       print('Scanning QR code: $qrValue');
       
-      // Get retailer by QR code (which contains phone number)
-      final retailerData = await _retailerService.getRetailerByPhone(qrValue);
+      // Get retailer by phone number using employee endpoint
+      final retailerData = await _retailerService.getRetailerByPhoneForEmployee(qrValue);
       
       print('Retailer found: ${retailerData['RET_NAME']}');
       
       if (mounted) {
-        // Navigate to retailer detail page
-        Navigator.pushNamed(
-          context,
-          '/retailer-detail',
-          arguments: retailerData['RET_ID'],
+        // Set this retailer as selected for ordering
+        await _retailerService.setSelectedRetailer(
+          retailerData['RET_ID'].toString(),
+          retailerData['RET_MOBILE_NO'].toString(),
         );
         
+        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Retailer found: ${retailerData['RET_NAME']}'),
+            content: Text('Selected retailer: ${retailerData['RET_NAME']}'),
             backgroundColor: Colors.green,
             duration: const Duration(seconds: 2),
           ),
+        );
+        
+        // Navigate to home page
+        Navigator.pushNamedAndRemoveUntil(
+          context,
+          '/home',
+          (route) => false,
         );
       }
     } catch (e) {
@@ -229,11 +275,27 @@ class _RetailerListPageState extends State<RetailerListPage> {
                       suffixIcon: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            icon: const Icon(Icons.qr_code_scanner),
-                            onPressed: _openQRScanner,
-                            tooltip: 'Scan QR Code',
-                          ),
+                          // Only show QR scanner for employees
+                          if (_user?.role.toLowerCase() == 'employee') ...[
+                            IconButton(
+                              icon: const Icon(Icons.qr_code_scanner),
+                              onPressed: () {
+                                print('QR scanner button pressed!');
+                                _openQRScanner();
+                              },
+                              tooltip: 'Scan QR Code',
+                            ),
+                          ] else ...[
+                            // Debug: Show why camera icon is not visible
+                            if (_user != null)
+                              Padding(
+                                padding: const EdgeInsets.only(right: 8.0),
+                                child: Text(
+                                  'Role: ${_user!.role}',
+                                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                                ),
+                              ),
+                          ],
                           if (_searchController.text.isNotEmpty)
                             IconButton(
                               icon: const Icon(Icons.clear),

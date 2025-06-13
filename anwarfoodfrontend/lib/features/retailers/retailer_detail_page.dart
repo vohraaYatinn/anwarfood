@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/retailer_service.dart';
+import '../../services/auth_service.dart';
+import '../../models/user_model.dart';
 import 'package:intl/intl.dart';
 import '../../config/api_config.dart';
 
@@ -12,16 +14,45 @@ class RetailerDetailPage extends StatefulWidget {
 
 class _RetailerDetailPageState extends State<RetailerDetailPage> {
   final RetailerService _retailerService = RetailerService();
+  final AuthService _authService = AuthService();
   bool _isLoading = true;
   String? _error;
   Map<String, dynamic>? _retailerData;
+  User? _currentUser;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRetailerDetails();
+      _loadCurrentUser();
     });
+  }
+
+  Future<void> _loadCurrentUser() async {
+    try {
+      final user = await _authService.getUser();
+      setState(() {
+        _currentUser = user;
+      });
+    } catch (e) {
+      print('Error loading current user: $e');
+    }
+  }
+
+  Future<void> _editRetailer() async {
+    if (_retailerData?['retailer'] == null) return;
+    
+    final result = await Navigator.pushNamed(
+      context,
+      '/admin-edit-retailer',
+      arguments: _retailerData!['retailer'],
+    );
+    
+    // If the edit was successful, refresh the retailer data
+    if (result == true) {
+      _loadRetailerDetails();
+    }
   }
 
   Future<void> _loadRetailerDetails() async {
@@ -93,6 +124,15 @@ class _RetailerDetailPageState extends State<RetailerDetailPage> {
           ),
         ),
         centerTitle: false,
+        actions: [
+          if (_currentUser != null && 
+              (_currentUser!.role.toLowerCase() == 'admin' || 
+               _currentUser!.role.toLowerCase() == 'employee'))
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.black),
+              onPressed: () => _editRetailer(),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

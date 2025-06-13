@@ -319,4 +319,81 @@ class RetailerService {
       rethrow;
     }
   }
+
+  // Get retailer by phone number for employee (QR code scanning)
+  Future<Map<String, dynamic>> getRetailerByPhoneForEmployee(String phone) async {
+    try {
+      final token = await _getToken();
+      if (token == null) {
+        throw Exception('No authentication token found');
+      }
+
+      final uri = Uri.parse('${ApiConfig.baseUrl}/api/employee/get-retailer-by-phone/$phone');
+
+      print('Fetching retailer by phone for employee: $phone');
+      print('API URL: $uri');
+
+      final response = await http.get(
+        uri,
+        headers: _getHeaders(token),
+      );
+
+      print('Employee retailer by phone response status: ${response.statusCode}');
+      print('Employee retailer by phone response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['success'] == true) {
+          return data['data'];
+        } else {
+          throw Exception(data['message'] ?? 'Failed to fetch retailer by phone');
+        }
+      } else if (response.statusCode == 401) {
+        throw Exception('Authentication failed. Please login again.');
+      } else {
+        throw Exception('Failed to fetch retailer by phone. Status: ${response.statusCode}');
+      }
+    } on SocketException {
+      throw Exception('No internet connection');
+    } catch (e) {
+      print('Error in getRetailerByPhoneForEmployee: $e');
+      rethrow;
+    }
+  }
+
+  // Set selected retailer for employee ordering
+  Future<void> setSelectedRetailer(String retailerId, String phoneNumber) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_retailer_id', retailerId);
+      await prefs.setString('selected_retailer_phone', phoneNumber);
+      print('Set selected retailer - ID: $retailerId, Phone: $phoneNumber');
+    } catch (e) {
+      print('Error setting selected retailer: $e');
+      throw Exception('Failed to set selected retailer');
+    }
+  }
+
+  // Get selected retailer ID
+  Future<String?> getSelectedRetailerId() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('selected_retailer_id');
+    } catch (e) {
+      print('Error getting selected retailer ID: $e');
+      return null;
+    }
+  }
+
+  // Clear selected retailer
+  Future<void> clearSelectedRetailer() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('selected_retailer_id');
+      await prefs.remove('selected_retailer_phone');
+      print('Cleared selected retailer');
+    } catch (e) {
+      print('Error clearing selected retailer: $e');
+    }
+  }
 } 

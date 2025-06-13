@@ -500,12 +500,48 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             ),
                             const SizedBox(height: 8),
                             if (_selectedUnit != null) ...[
+                              Row(
+                                children: [
+                                  Text(
+                                    'MRP: ',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Rs. ${_product!.mrp}',
+                                    style: TextStyle(
+                                      color: Colors.grey[600],
+                                      fontSize: 14,
+                                      decoration: TextDecoration.lineThrough,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    'SP: ',
+                                    style: const TextStyle(
+                                      color: Color(0xFF9B1B1B),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Rs. ${_product!.sp}',
+                                    style: const TextStyle(
+                                      color: Color(0xFF9B1B1B),
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
                               Text(
                                 'Rs. ${_selectedUnit!['PU_PROD_RATE']} per ${_selectedUnit!['PU_PROD_UNIT_VALUE']} ${_selectedUnit!['PU_PROD_UNIT']}',
                                 style: const TextStyle(
-                                  color: Color(0xFF9B1B1B),
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
+                                  color: Colors.grey,
+                                  fontSize: 14,
                                 ),
                               ),
                               const SizedBox(height: 8),

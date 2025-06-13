@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const employeeMiddleware = require('../middleware/employee.middleware');
-const { orderPaymentUpload } = require('../middleware/upload.middleware');
+const { orderPaymentUpload, retailerProfileUpload } = require('../middleware/upload.middleware');
 const {
   fetchOrders,
   searchOrders,
@@ -9,7 +9,13 @@ const {
   updateOrderStatus,
   placeOrderForCustomer,
   getRetailerList,
-  searchRetailers
+  searchRetailers,
+  editRetailer,
+  getRetailerByPhone,
+  getStaMaster,
+  getTodayDwr,
+  startDay,
+  endDay
 } = require('../controllers/employee.controller');
 
 // Apply employee middleware to all routes
@@ -25,5 +31,15 @@ router.post('/place-order', placeOrderForCustomer);
 // Retailer Management Routes
 router.get('/retailers', getRetailerList);
 router.get('/retailers/search', searchRetailers);
+router.put('/retailers/:retailerId/edit', retailerProfileUpload, editRetailer);
+router.get('/get-retailer-by-phone/:phone', getRetailerByPhone);
+
+// STA Master Routes
+router.get('/sta-master', getStaMaster);
+
+// DWR (Daily Work Report) Routes
+router.get('/dwr/today', getTodayDwr);
+router.post('/dwr/start-day', startDay);
+router.put('/dwr/end-day', endDay);
 
 module.exports = router; 

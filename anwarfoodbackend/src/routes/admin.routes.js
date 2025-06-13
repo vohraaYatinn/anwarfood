@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const adminMiddleware = require('../middleware/admin.middleware');
-const { productImagesUpload } = require('../middleware/upload.middleware');
+const { productImagesUpload, retailerProfileUpload } = require('../middleware/upload.middleware');
 const {
   addProduct,
   editProduct,
@@ -48,7 +48,7 @@ router.get('/search-orders', searchOrders);
 // Retailer Management Routes
 router.get('/get-all-retailer-list', getAllRetailers);
 router.post('/add-retailer', addRetailer);
-router.put('/edit-retailer/:retailerId', editRetailer);
+router.put('/edit-retailer/:retailerId', retailerProfileUpload, editRetailer);
 router.get('/get-details-single-retailer/:retailerId', getSingleRetailer);
 router.get('/get-retailer-by-phone/:phone', getRetailerByPhone);
 

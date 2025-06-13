@@ -69,6 +69,13 @@ class _HomePageState extends State<HomePage> {
   String? _locationError;
   String _appName = 'SHOPPURS APP'; // Default name until loaded
   String? _selectedRetailerPhone;
+  
+  // DWR related variables
+  Map<String, dynamic>? _dwrData;
+  bool _isDwrLoading = false;
+  Timer? _dwrTimer;
+  List<Map<String, dynamic>> _stations = [];
+  bool _isStationsLoading = false;
 
   @override
   void initState() {
@@ -91,6 +98,7 @@ class _HomePageState extends State<HomePage> {
     _debounce?.cancel();
     _cartCountTimer?.cancel();
     _autoPlayTimer?.cancel();
+    _dwrTimer?.cancel();
     super.dispose();
   }
 
@@ -196,6 +204,10 @@ class _HomePageState extends State<HomePage> {
       // Load retailer phone for employees
       if (user?.role.toLowerCase() == 'employee') {
         _loadSelectedRetailerPhone();
+        _loadTodayDwr();
+        // Setup periodic DWR refresh
+        _dwrTimer?.cancel();
+        _dwrTimer = Timer.periodic(const Duration(minutes: 5), (_) => _loadTodayDwr());
       }
       
       // Start fetching cart count if user is a customer or employee
@@ -220,6 +232,861 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       print('Error loading retailer phone: $e');
+    }
+  }
+
+  Future<void> _loadTodayDwr() async {
+    if (_isDwrLoading) return;
+    
+    setState(() {
+      _isDwrLoading = true;
+    });
+    
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/employee/dwr/today'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          setState(() {
+            _dwrData = data;
+            _isDwrLoading = false;
+          });
+        }
+      } else {
+        throw Exception('Failed to load DWR data');
+      }
+    } catch (e) {
+      print('Error loading DWR: $e');
+      if (mounted) {
+        setState(() {
+          _isDwrLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _startDay() async {
+    _showStartDayDialog();
+  }
+
+  Future<void> _loadStations() async {
+    setState(() {
+      _isStationsLoading = true;
+    });
+    
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/employee/sta-master'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          setState(() {
+            _stations = List<Map<String, dynamic>>.from(data['data']);
+            _isStationsLoading = false;
+          });
+        } else {
+          throw Exception(data['message'] ?? 'Failed to load stations');
+        }
+      } else {
+        throw Exception('Failed to load stations');
+      }
+    } catch (e) {
+      print('Error loading stations: $e');
+      if (mounted) {
+        setState(() {
+          _isStationsLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading stations: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadStationsForDialog() async {
+    try {
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}/api/employee/sta-master'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          if (mounted) {
+            setState(() {
+              _stations = List<Map<String, dynamic>>.from(data['data']);
+            });
+          }
+        } else {
+          throw Exception(data['message'] ?? 'Failed to load stations');
+        }
+      } else {
+        throw Exception('Failed to load stations');
+      }
+    } catch (e) {
+      print('Error loading stations for dialog: $e');
+      rethrow; // Re-throw to handle in the dialog
+    }
+  }
+
+  void _showStartDayDialog() async {
+    int? selectedStationId;
+    bool isStartingDay = false;
+    bool isDialogStationsLoading = _stations.isEmpty;
+    List<Map<String, dynamic>> dialogStations = List.from(_stations);
+    String? stationsError;
+    
+    // Load stations if empty
+    if (_stations.isEmpty) {
+      try {
+        await _loadStationsForDialog();
+        dialogStations = List.from(_stations);
+        isDialogStationsLoading = false;
+      } catch (e) {
+        isDialogStationsLoading = false;
+        stationsError = e.toString();
+      }
+    }
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'Start Your Day',
+                style: TextStyle(
+                  color: Color(0xFF9B1B1B),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Select your starting station:',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  if (isDialogStationsLoading)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF9B1B1B),
+                        ),
+                      ),
+                    )
+                  else if (stationsError != null)
+                    Column(
+                      children: [
+                        Text(
+                          'Error loading stations: $stationsError',
+                          style: const TextStyle(color: Colors.red),
+                        ),
+                        const SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            setDialogState(() {
+                              isDialogStationsLoading = true;
+                              stationsError = null;
+                            });
+                            
+                            try {
+                              await _loadStationsForDialog();
+                              setDialogState(() {
+                                dialogStations = List.from(_stations);
+                                isDialogStationsLoading = false;
+                              });
+                            } catch (e) {
+                              setDialogState(() {
+                                isDialogStationsLoading = false;
+                                stationsError = e.toString();
+                              });
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF9B1B1B),
+                          ),
+                          child: const Text(
+                            'Retry',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ],
+                    )
+                  else if (dialogStations.isEmpty)
+                    const Text(
+                      'No stations available',
+                      style: TextStyle(color: Colors.grey),
+                    )
+                  else
+                    DropdownButtonFormField<int>(
+                      value: selectedStationId,
+                      decoration: InputDecoration(
+                        hintText: 'Choose a station',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF9B1B1B),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      items: dialogStations.map((station) {
+                        return DropdownMenuItem<int>(
+                          value: station['STA_ID'],
+                          child: Text(
+                            station['STA_NAME'],
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setDialogState(() {
+                          selectedStationId = value;
+                        });
+                      },
+                    ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isStartingDay ? null : () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: (selectedStationId == null || isStartingDay || isDialogStationsLoading) 
+                      ? null 
+                      : () async {
+                          setDialogState(() {
+                            isStartingDay = true;
+                          });
+                          
+                          await _startDayWithStation(selectedStationId!, dialogContext);
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF9B1B1B),
+                  ),
+                  child: isStartingDay
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'Start Your Day',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _startDayWithStation(int stationId, BuildContext dialogContext) async {
+    try {
+      // Get current location
+      String location = await _getCurrentLocationString();
+      
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}/api/employee/dwr/start-day'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'DWR_START_STA': stationId,
+          'DWR_START_LOC': location,
+        }),
+      );
+      
+      final data = jsonDecode(response.body);
+      
+      if (data['success'] == true) {
+        // Close the station selection dialog
+        Navigator.of(dialogContext).pop();
+        
+        // Show success dialog
+        _showDayStartedDialog(data['message'] ?? 'Day started successfully!');
+      } else {
+        throw Exception(data['message'] ?? 'Failed to start day');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      // Close dialog on error
+      if (Navigator.of(dialogContext).canPop()) {
+        Navigator.of(dialogContext).pop();
+      }
+    }
+  }
+
+  Future<String> _getCurrentLocationString() async {
+    try {
+      if (kIsWeb) {
+        // For web, return a default location or show error
+        throw Exception('Location services not available on web');
+      }
+
+      // Check if location service is enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location services are disabled');
+      }
+
+      // Check location permission
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied');
+      }
+
+      // Get current position
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      return '${position.longitude},${position.latitude}';
+    } catch (e) {
+      print('Error getting location: $e');
+      // Return a default location or rethrow the error
+      throw Exception('Failed to get current location: ${e.toString()}');
+    }
+  }
+
+  void _showDayStartedDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 28,
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Day Started!',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(fontSize: 16),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _loadTodayDwr(); // Refresh DWR data
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9B1B1B),
+              ),
+              child: const Text(
+                'OK',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _endDay() async {
+    _showEndDayDialog();
+  }
+
+  String _getDwrButtonText() {
+    if (_dwrData == null) return 'Start Your Day';
+    
+    final hasStartedDay = _dwrData!['has_started_day'] ?? false;
+    final data = _dwrData!['data'];
+    
+    if (data != null) {
+      // Check if DWR_END_LOC exists and DWR_SUBMIT date is today
+      final dwrEndLoc = data['DWR_END_LOC'];
+      final dwrSubmit = data['DWR_SUBMIT'];
+      final todayDate = _dwrData!['today_date'];
+      
+      if (dwrEndLoc != null && dwrSubmit != null) {
+        final submitDate = DateTime.parse(dwrSubmit).toLocal();
+        final today = DateTime.now();
+        
+        if (submitDate.year == today.year &&
+            submitDate.month == today.month &&
+            submitDate.day == today.day) {
+          return 'Today\'s Day Closed';
+        }
+      }
+    }
+    
+    return hasStartedDay ? 'End Your Day' : 'Start Your Day';
+  }
+
+  bool _isDwrButtonDisabled() {
+    if (_dwrData == null || _isDwrLoading) return true;
+    
+    final data = _dwrData!['data'];
+    
+    if (data != null) {
+      final dwrEndLoc = data['DWR_END_LOC'];
+      final dwrSubmit = data['DWR_SUBMIT'];
+      
+      if (dwrEndLoc != null && dwrSubmit != null) {
+        final submitDate = DateTime.parse(dwrSubmit).toLocal();
+        final today = DateTime.now();
+        
+        if (submitDate.year == today.year &&
+            submitDate.month == today.month &&
+            submitDate.day == today.day) {
+          return true; // Day already closed
+        }
+      }
+    }
+    
+    return _isDwrLoading;
+  }
+
+  void _showEndDayDialog() async {
+    int? selectedStationId;
+    bool isEndingDay = false;
+    bool isDialogStationsLoading = _stations.isEmpty;
+    List<Map<String, dynamic>> dialogStations = List.from(_stations);
+    String? stationsError;
+    
+    // Controllers for form fields
+    final TextEditingController expensesController = TextEditingController();
+    final TextEditingController remarksController = TextEditingController();
+    
+    // Load stations if empty
+    if (_stations.isEmpty) {
+      try {
+        await _loadStationsForDialog();
+        dialogStations = List.from(_stations);
+        isDialogStationsLoading = false;
+      } catch (e) {
+        isDialogStationsLoading = false;
+        stationsError = e.toString();
+      }
+    }
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text(
+                'End Your Day',
+                style: TextStyle(
+                  color: Color(0xFF9B1B1B),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Station Selection
+                    const Text(
+                      'Select your ending station:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    if (isDialogStationsLoading)
+                      const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(20.0),
+                          child: CircularProgressIndicator(
+                            color: Color(0xFF9B1B1B),
+                          ),
+                        ),
+                      )
+                    else if (stationsError != null)
+                      Column(
+                        children: [
+                          Text(
+                            'Error loading stations: $stationsError',
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          const SizedBox(height: 8),
+                          ElevatedButton(
+                            onPressed: () async {
+                              setDialogState(() {
+                                isDialogStationsLoading = true;
+                                stationsError = null;
+                              });
+                              
+                              try {
+                                await _loadStationsForDialog();
+                                setDialogState(() {
+                                  dialogStations = List.from(_stations);
+                                  isDialogStationsLoading = false;
+                                });
+                              } catch (e) {
+                                setDialogState(() {
+                                  isDialogStationsLoading = false;
+                                  stationsError = e.toString();
+                                });
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF9B1B1B),
+                            ),
+                            child: const Text(
+                              'Retry',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      )
+                    else if (dialogStations.isEmpty)
+                      const Text(
+                        'No stations available',
+                        style: TextStyle(color: Colors.grey),
+                      )
+                    else
+                      DropdownButtonFormField<int>(
+                        value: selectedStationId,
+                        decoration: InputDecoration(
+                          hintText: 'Choose a station',
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                              color: Color(0xFF9B1B1B),
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                        items: dialogStations.map((station) {
+                          return DropdownMenuItem<int>(
+                            value: station['STA_ID'],
+                            child: Text(
+                              station['STA_NAME'],
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setDialogState(() {
+                            selectedStationId = value;
+                          });
+                        },
+                      ),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Expenses Field
+                    const Text(
+                      'Expenses (₹):',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: expensesController,
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      decoration: InputDecoration(
+                        hintText: 'Enter expenses amount',
+                        prefixText: '₹ ',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF9B1B1B),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 20),
+                    
+                    // Remarks Field
+                    const Text(
+                      'Remarks:',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: remarksController,
+                      maxLines: 3,
+                      decoration: InputDecoration(
+                        hintText: 'Enter remarks about your day',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(
+                            color: Color(0xFF9B1B1B),
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isEndingDay ? null : () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text(
+                    'Cancel',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: (selectedStationId == null || isEndingDay || isDialogStationsLoading) 
+                      ? null 
+                      : () async {
+                          setDialogState(() {
+                            isEndingDay = true;
+                          });
+                          
+                          await _endDayWithDetails(
+                            selectedStationId!,
+                            expensesController.text.trim(),
+                            remarksController.text.trim(),
+                            dialogContext,
+                          );
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF9B1B1B),
+                  ),
+                  child: isEndingDay
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text(
+                          'End Your Day',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _endDayWithDetails(
+    int stationId,
+    String expenses,
+    String remarks,
+    BuildContext dialogContext,
+  ) async {
+    try {
+      // Get current location
+      String location = await _getCurrentLocationString();
+      
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      // Prepare request body
+      Map<String, dynamic> requestBody = {
+        'DWR_END_STA': stationId,
+        'DWR_END_LOC': location,
+        'DWR_REMARKS': remarks.isNotEmpty ? remarks : null,
+      };
+      
+      // Add expenses if provided
+      if (expenses.isNotEmpty) {
+        double? expenseAmount = double.tryParse(expenses);
+        if (expenseAmount != null) {
+          requestBody['DWR_EXPENSES'] = expenseAmount;
+        }
+      }
+      
+      final response = await http.put(
+        Uri.parse('${ApiConfig.baseUrl}/api/employee/dwr/end-day'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode(requestBody),
+      );
+      
+      final data = jsonDecode(response.body);
+      
+      if (data['success'] == true) {
+        // Close the form dialog
+        Navigator.of(dialogContext).pop();
+        
+        // Show success dialog
+        _showDayEndedDialog(data['message'] ?? 'Day ended successfully!');
+      } else {
+        throw Exception(data['message'] ?? 'Failed to end day');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      // Close dialog on error
+      if (Navigator.of(dialogContext).canPop()) {
+        Navigator.of(dialogContext).pop();
+      }
+    }
+  }
+
+  void _showDayEndedDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Row(
+            children: [
+              Icon(
+                Icons.check_circle,
+                color: Colors.green,
+                size: 28,
+              ),
+              SizedBox(width: 12),
+              Text(
+                'Day Ended!',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            message,
+            style: const TextStyle(fontSize: 16),
+          ),
+          actions: [
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _loadTodayDwr(); // Refresh DWR data
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF9B1B1B),
+              ),
+              child: const Text(
+                'OK',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _onDwrButtonPressed() {
+    if (_isDwrButtonDisabled()) return;
+    
+    final hasStartedDay = _dwrData?['has_started_day'] ?? false;
+    
+    if (hasStartedDay) {
+      _endDay();
+    } else {
+      _startDay();
     }
   }
 
@@ -1168,47 +2035,7 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      floatingActionButton: (_user?.role.toLowerCase() == 'customer' || _user?.role.toLowerCase() == 'employee')
-        ? Stack(
-            children: [
-              FloatingActionButton(
-                backgroundColor: const Color(0xFF9B1B1B),
-                onPressed: () {
-                  Navigator.pushNamed(context, '/cart').then((_) {
-                    // Refresh cart count when returning from cart page
-                    _fetchCartCount();
-                  });
-                },
-                child: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
-              ),
-              if (_cartCount > 0)
-                Positioned(
-                  right: 0,
-                  top: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 20,
-                      minHeight: 20,
-                    ),
-                    child: Text(
-                      _cartCount.toString(),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          )
-        : null,
+      floatingActionButton: _buildFloatingActionButton(),
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF9B1B1B),
@@ -1450,6 +2277,84 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  Widget? _buildFloatingActionButton() {
+    if (_user?.role.toLowerCase() == 'employee') {
+      // DWR floating action button for employees
+      return FloatingActionButton.extended(
+        backgroundColor: _isDwrButtonDisabled() 
+            ? Colors.grey 
+            : const Color(0xFF9B1B1B),
+        onPressed: _isDwrButtonDisabled() ? null : _onDwrButtonPressed,
+        icon: _isDwrLoading 
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                  strokeWidth: 2,
+                ),
+              )
+            : Icon(
+                _getDwrButtonText().contains('Start') 
+                    ? Icons.play_arrow 
+                    : _getDwrButtonText().contains('End')
+                        ? Icons.stop
+                        : Icons.check_circle,
+                color: Colors.white,
+              ),
+        label: Text(
+          _getDwrButtonText(),
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      );
+    } else if (_user?.role.toLowerCase() == 'customer') {
+      // Cart floating action button for customers
+      return Stack(
+        children: [
+          FloatingActionButton(
+            backgroundColor: const Color(0xFF9B1B1B),
+            onPressed: () {
+              Navigator.pushNamed(context, '/cart').then((_) {
+                _fetchCartCount();
+              });
+            },
+            child: const Icon(Icons.shopping_cart_outlined, color: Colors.white),
+          ),
+          if (_cartCount > 0)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                constraints: const BoxConstraints(
+                  minWidth: 20,
+                  minHeight: 20,
+                ),
+                child: Text(
+                  _cartCount.toString(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+    
+    return null; // No floating action button for other roles
   }
 }
 
