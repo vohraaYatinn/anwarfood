@@ -10,6 +10,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 import 'package:http_parser/http_parser.dart' as http_parser;
+import '../../config/api_config.dart';
 
 class PaymentPage extends StatefulWidget {
   const PaymentPage({Key? key}) : super(key: key);
@@ -186,7 +187,7 @@ class _PaymentPageState extends State<PaymentPage> {
 
     // For employees, only COD is allowed, so we use simple JSON request
     final response = await http.post(
-      Uri.parse('http://localhost:3000/api/employee/place-order'),
+      Uri.parse('${ApiConfig.baseUrl}/api/employee/place-order'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
@@ -203,10 +204,25 @@ class _PaymentPageState extends State<PaymentPage> {
     final data = jsonDecode(response.body);
     if (data['success'] == true) {
       if (mounted) {
+        // Format the order details for employee orders to match OrderSuccessPage expectations
+        final orderData = data['data'] ?? {};
+        final formattedOrderDetails = {
+          'orderNumber': orderData['orderNumber'] ?? orderData['order_id'] ?? 'N/A',
+          'orderTotal': orderData['orderTotal'] ?? orderData['total'] ?? orderData['amount'] ?? '0',
+          'deliveryAddress': {
+            'address': 'Retailer Phone: $_retailerPhone',
+            'city': 'Order placed for retailer',
+            'state': '',
+            'country': '',
+            'pincode': '',
+            'landmark': _notesController.text.trim().isEmpty ? 'No special instructions' : _notesController.text.trim(),
+          },
+        };
+        
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => OrderSuccessPage(orderDetails: data['data']),
+            builder: (context) => OrderSuccessPage(orderDetails: formattedOrderDetails),
           ),
         );
       }
@@ -219,7 +235,7 @@ class _PaymentPageState extends State<PaymentPage> {
     // Create multipart request
     var request = http.MultipartRequest(
       'POST',
-      Uri.parse('http://192.168.29.96:3000/api/cart/place-order'),
+      Uri.parse('${ApiConfig.baseUrl}/api/cart/place-order'),
     );
 
     // Add headers

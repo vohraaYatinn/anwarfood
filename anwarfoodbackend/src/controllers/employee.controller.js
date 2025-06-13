@@ -430,14 +430,15 @@ const placeOrderForCustomer = async (req, res) => {
         ORDER_NUMBER, USER_ID, ORDER_TOTAL, ORDER_STATUS, 
         DELIVERY_ADDRESS, DELIVERY_CITY, DELIVERY_STATE, 
         DELIVERY_COUNTRY, DELIVERY_PINCODE, DELIVERY_LANDMARK,
-        PAYMENT_METHOD, ORDER_NOTES
-      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?)
+        PAYMENT_METHOD, ORDER_NOTES, CREATED_BY
+      ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
       orderNumber, retailerUserId, orderTotal, 
       orderAddress.ADDRESS, orderAddress.CITY, orderAddress.STATE,
       orderAddress.COUNTRY, orderAddress.PINCODE, orderAddress.LANDMARK,
       'cod', // Force COD payment method
-      notes || 'Order placed by employee on behalf of retailer/customer'
+      notes || 'Order placed by employee on behalf of retailer/customer',
+      employeeUserId // CREATED_BY - Employee's USER_ID who placed the order
     ]);
 
     const orderId = orderResult.insertId;
@@ -453,6 +454,36 @@ const placeOrderForCustomer = async (req, res) => {
         orderId, item.PROD_ID, item.UNIT_ID, item.QUANTITY,
         item.PU_PROD_RATE, (item.PU_PROD_RATE * item.QUANTITY)
       ]);
+    }
+
+    // Get today's DWR_ID for the employee to link with cdwr_detail
+    const today = new Date().toISOString().split('T')[0];
+    const [dwrData] = await connection.query(`
+      SELECT DWR_ID FROM dwr_detail 
+      WHERE DWR_EMP_ID = ? AND DATE(DWR_SUBMIT) = ? AND DEL_STATUS = 0
+      ORDER BY DWR_ID DESC
+      LIMIT 1
+    `, [employeeUserId, today]);
+
+    // If employee has a DWR for today, create cdwr_detail records for each product
+    if (dwrData.length > 0) {
+      const dwrId = dwrData[0].DWR_ID;
+      
+      // Create cdwr_detail record for each cart item/product
+      for (const item of cartItems) {
+        await connection.query(`
+          INSERT INTO cdwr_detail (
+            CDWR_VDWR_ID, CDWR_CUST_ID, CDWR_PRODM_ID, 
+            CDWR_CUST_ORDER_ID, DEL_STATUS
+          ) VALUES (?, ?, ?, ?, ?)
+        `, [
+          dwrId,           // CDWR_VDWR_ID - DWR_ID from today's DWR
+          retailerUserId,  // CDWR_CUST_ID - Customer/Retailer USER_ID
+          item.PROD_ID,    // CDWR_PRODM_ID - Product ID
+          orderId,         // CDWR_CUST_ORDER_ID - Order ID
+          0                // DEL_STATUS - 0 for active
+        ]);
+      }
     }
 
     // Clear employee's cart
