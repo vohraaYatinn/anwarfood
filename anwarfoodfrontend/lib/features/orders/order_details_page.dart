@@ -1210,7 +1210,6 @@ class _OrderDetailsPageState extends State<OrderDetailsPage> {
 
   Widget _buildInvoiceSection() {
     if (_order == null || 
-        _order!['ORDER_STATUS']?.toString().toLowerCase() != 'delivered' ||
         _order!['INVOICE_URL'] == null ||
         _order!['INVOICE_URL'].toString().isEmpty) {
       return const SizedBox.shrink();

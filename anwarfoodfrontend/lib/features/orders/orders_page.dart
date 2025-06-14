@@ -205,10 +205,17 @@ class _OrdersPageState extends State<OrdersPage> {
 
       setState(() {
         if (_user?.role.toLowerCase() == 'employee') {
+          // Employee response structure - keep as is
           _orders = (response['data']['orders'] as List).cast<Map<String, dynamic>>();
+        } else if (_user?.role.toLowerCase() == 'admin') {
+          // Admin response structure
+          _orders = (response['data']['orders'] as List).cast<Map<String, dynamic>>();
+          // Admin API doesn't have retailer_info, so set to null
+          _retailerInfo = null;
         } else {
-          _orders = (response['orders'] as List).cast<Map<String, dynamic>>();
-          _retailerInfo = response['retailer_info'] as Map<String, dynamic>?;
+          // Customer response structure
+          _orders = (response['data']['orders'] as List).cast<Map<String, dynamic>>();
+          _retailerInfo = response['data']['retailer_info'] as Map<String, dynamic>?;
         }
         _isLoading = false;
       });
@@ -323,7 +330,9 @@ class _OrdersPageState extends State<OrdersPage> {
         print('Retailer found, setting for ordering: ${retailerData['RET_NAME']} - $phoneNumber');
         
         // Set retailer for ordering using the direct method
+        final shopName = retailerData['RET_SHOP_NAME']?.toString() ?? retailerData['RET_NAME']?.toString() ?? '';
         await _setSelectedRetailerPhone(phoneNumber);
+        await _setSelectedRetailerShopName(shopName);
         
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -427,13 +436,6 @@ class _OrdersPageState extends State<OrdersPage> {
                             ),
                           ),
               ),
-            ),
-            const Spacer(),
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () {
-                Navigator.pushNamed(context, '/notifications');
-              },
             ),
           ],
         ),
@@ -615,7 +617,7 @@ class _OrdersPageState extends State<OrdersPage> {
                                                   Row(
                                                     children: [
                                                       Text(
-                                                        '${order['total_items']} items',
+                                                        '${order['total_items'] ?? order['TOTAL_ITEMS'] ?? 0} items',
                                                         style: const TextStyle(
                                                           color: Colors.grey,
                                                           fontSize: 13,
@@ -711,7 +713,7 @@ class _OrdersPageState extends State<OrdersPage> {
                                         style: const TextStyle(fontWeight: FontWeight.bold),
                                       ),
                                       subtitle: Text(
-                                        '${order['total_items']} items • ${_formatDate(order['CREATED_DATE'])}',
+                                        '${order['total_items'] ?? order['TOTAL_ITEMS'] ?? 0} items • ${_formatDate(order['CREATED_DATE'])}',
                                         style: const TextStyle(color: Colors.grey),
                                       ),
                                       trailing: Text(
@@ -751,6 +753,17 @@ class _OrdersPageState extends State<OrdersPage> {
       await prefs.setString('selected_retailer_phone', phoneNumber);
     } catch (e) {
       print('Error setting retailer phone: $e');
+      rethrow;
+    }
+  }
+
+  Future<void> _setSelectedRetailerShopName(String shopName) async {
+    try {
+      // Use SharedPreferences to store the selected retailer shop name
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_retailer_shop_name', shopName);
+    } catch (e) {
+      print('Error setting retailer shop name: $e');
       rethrow;
     }
   }
