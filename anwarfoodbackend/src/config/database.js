@@ -2,25 +2,11 @@ const mysql = require('mysql2');
 require('dotenv').config();
 
 // Create a connection pool instead of a single connection
-// const pool = mysql.createPool({
-//   host: 'bysjhtucyklqdqiszive-mysql.services.clever-cloud.com',
-//   user: 'uh6qrnhqahuccwz1',
-//   password: '6yj0tnzmP0i7RyuD7aLp',
-//   database: 'bysjhtucyklqdqiszive',
-//   port: 3306,
-//   connectionLimit: 5,
-//   queueLimit: 0,
-//   acquireTimeout: 30000,
-//   idleTimeout: 60000,
-//   ssl: false,
-//   charset: 'utf8mb4',
-//   reconnect: true
-// });
 const pool = mysql.createPool({
-  host: '127.0.0.1',
-  user: 'root',
-  password: 'defaultpassword',
-  database: 'shoppurs',
+  host: 'bysjhtucyklqdqiszive-mysql.services.clever-cloud.com',
+  user: 'uh6qrnhqahuccwz1',
+  password: '6yj0tnzmP0i7RyuD7aLp',
+  database: 'bysjhtucyklqdqiszive',
   port: 3306,
   connectionLimit: 5,
   queueLimit: 0,
@@ -30,6 +16,20 @@ const pool = mysql.createPool({
   charset: 'utf8mb4',
   reconnect: true
 });
+// const pool = mysql.createPool({
+//   host: '127.0.0.1',
+//   user: 'root',
+//   password: 'defaultpassword',
+//   database: 'shoppurs',
+//   port: 3306,
+//   connectionLimit: 5,
+//   queueLimit: 0,
+//   acquireTimeout: 30000,
+//   idleTimeout: 60000,
+//   ssl: false,
+//   charset: 'utf8mb4',
+//   reconnect: true
+// });
 
 // Test the connection
 pool.getConnection((err, connection) => {
