@@ -147,6 +147,8 @@ class _RetailerSelectionPageState extends State<RetailerSelectionPage> {
   Future<void> _selectRetailer(Map<String, dynamic> retailer) async {
     try {
       final phoneNumber = retailer['RET_MOBILE_NO']?.toString() ?? '';
+      final shopName = retailer['RET_SHOP_NAME']?.toString() ?? retailer['RET_NAME']?.toString() ?? '';
+      
       if (phoneNumber.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -157,7 +159,9 @@ class _RetailerSelectionPageState extends State<RetailerSelectionPage> {
         return;
       }
 
+      // Store both phone number and shop name
       await _retailerService.storeSelectedRetailerPhone(phoneNumber);
+      await _retailerService.storeSelectedRetailerShopName(shopName);
       
       if (mounted) {
         setState(() {
@@ -171,8 +175,8 @@ class _RetailerSelectionPageState extends State<RetailerSelectionPage> {
           ),
         );
         
-        // Return to previous page with success result
-        Navigator.pop(context, true);
+        // Navigate to cart page after selecting retailer
+        Navigator.pushReplacementNamed(context, '/cart');
       }
     } catch (e) {
       if (mounted) {

@@ -22,6 +22,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../../config/api_config.dart';
+import '../../widgets/common_bottom_navbar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -1478,7 +1479,7 @@ class _HomePageState extends State<HomePage> {
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
                   child: Image.network(
-                    item['image_url'],
+                    '${ApiConfig.baseUrl}/uploads/advertising/${item['image_url']}',
                     fit: BoxFit.cover,
                     errorBuilder: (context, error, stackTrace) =>
                         const Center(child: Icon(Icons.error)),
@@ -1631,6 +1632,16 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const Spacer(),
+            ] else if (_user?.role.toLowerCase() == 'employee') ...[
+              const Text(
+                'EMPLOYEE LOGIN',
+                style: TextStyle(
+                  color: Color(0xFF9B1B1B),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              ),
+              const Spacer(),
             ] else ...[
               const Icon(Icons.location_on, color: Colors.black, size: 22),
               const SizedBox(width: 6),
@@ -1644,12 +1655,6 @@ class _HomePageState extends State<HomePage> {
               ),
               const Spacer(),
             ],
-            IconButton(
-              icon: const Icon(Icons.notifications_outlined),
-              onPressed: () {
-                Navigator.pushNamed(context, '/notifications');
-              },
-            ),
             if (_user?.role.toLowerCase() == 'customer' || _user?.role.toLowerCase() == 'employee')
               Stack(
                 children: [
@@ -1701,7 +1706,6 @@ class _HomePageState extends State<HomePage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 8),
-                  _buildRetailerBanner(),
                   Row(
                     children: [
                       Expanded(
@@ -1885,7 +1889,7 @@ class _HomePageState extends State<HomePage> {
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(18),
                                 child: Image.network(
-                                  cat.imageUrl,
+                                  '${ApiConfig.baseUrl}/uploads/category/${cat.imageUrl}',
                                   width: double.infinity,
                                   height: 70,
                                   fit: BoxFit.cover,
@@ -1948,7 +1952,7 @@ class _HomePageState extends State<HomePage> {
                         return ClipRRect(
                           borderRadius: BorderRadius.circular(12),
                           child: Image.network(
-                            brand['image_url'],
+                            '${ApiConfig.baseUrl}/uploads/brands/${brand['image_url']}',
                             fit: BoxFit.contain,
                             errorBuilder: (context, error, stackTrace) =>
                                 const Icon(Icons.image_not_supported, size: 38, color: Colors.grey),
@@ -2036,56 +2040,9 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
       floatingActionButton: _buildFloatingActionButton(),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF9B1B1B),
-        unselectedItemColor: Colors.grey,
-        currentIndex: 1,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushNamed(context, '/orders');
-              break;
-            case 1:
-              Navigator.pushNamed(context, '/product-list');
-              break;
-            case 2:
-              if (_user?.role?.toLowerCase() == 'admin') {
-                Navigator.pushNamed(context, '/retailer-list');
-              } else {
-              Navigator.pushNamed(context, '/self-retailer-detail');
-              }
-              break;
-            case 3:
-              // Already on search
-              break;
-            case 4:
-              Navigator.pushNamed(context, '/profile');
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            label: 'ORDERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_bag_outlined),
-            label: 'PRODUCTS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.storefront_outlined),
-            label: 'RETAILERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'SEARCH',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: 'ACCOUNT',
-          ),
-        ],
+      bottomNavigationBar: CommonBottomNavBar(
+        currentIndex: 3, // Home page is the SEARCH tab
+        user: _user,
       ),
     );
   }
@@ -2198,86 +2155,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildRetailerBanner() {
-    if (_user?.role.toLowerCase() != 'employee' || _selectedRetailerPhone == null) {
-      return const SizedBox.shrink();
-    }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF9B1B1B).withOpacity(0.1),
-            const Color(0xFF9B1B1B).withOpacity(0.05),
-          ],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFF9B1B1B).withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: const Color(0xFF9B1B1B),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.store,
-              color: Colors.white,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Ordering for Retailer',
-                  style: TextStyle(
-                    color: Color(0xFF9B1B1B),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  'Phone: $_selectedRetailerPhone',
-                  style: const TextStyle(
-                    color: Colors.black87,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              Navigator.pushNamed(context, '/retailer-selection').then((result) {
-                if (result == true) {
-                  _loadSelectedRetailerPhone();
-                }
-              });
-            },
-            icon: const Icon(
-              Icons.edit,
-              color: Color(0xFF9B1B1B),
-              size: 20,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget? _buildFloatingActionButton() {
     if (_user?.role.toLowerCase() == 'employee') {

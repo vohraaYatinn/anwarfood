@@ -146,6 +146,18 @@ class RetailerService {
     }
   }
 
+  // Store selected retailer shop name
+  Future<void> storeSelectedRetailerShopName(String shopName) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('selected_retailer_shop_name', shopName);
+      print('Stored retailer shop name: $shopName');
+    } catch (e) {
+      print('Error storing retailer shop name: $e');
+      throw Exception('Failed to store retailer shop name');
+    }
+  }
+
   // Get stored retailer phone number
   Future<String?> getSelectedRetailerPhone() async {
     try {
@@ -153,6 +165,17 @@ class RetailerService {
       return prefs.getString('selected_retailer_phone');
     } catch (e) {
       print('Error getting retailer phone: $e');
+      return null;
+    }
+  }
+
+  // Get stored retailer shop name
+  Future<String?> getSelectedRetailerShopName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString('selected_retailer_shop_name');
+    } catch (e) {
+      print('Error getting retailer shop name: $e');
       return null;
     }
   }
@@ -165,6 +188,17 @@ class RetailerService {
       print('Cleared stored retailer phone');
     } catch (e) {
       print('Error clearing retailer phone: $e');
+    }
+  }
+
+  // Clear stored retailer shop name
+  Future<void> clearSelectedRetailerShopName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('selected_retailer_shop_name');
+      print('Cleared stored retailer shop name');
+    } catch (e) {
+      print('Error clearing retailer shop name: $e');
     }
   }
 

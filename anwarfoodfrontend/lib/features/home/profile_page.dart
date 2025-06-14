@@ -23,7 +23,6 @@ class _ProfilePageState extends State<ProfilePage> {
   void initState() {
     super.initState();
     _loadUserData();
-    _fetchRetailerData();
   }
 
   Future<void> _loadUserData() async {
@@ -32,6 +31,11 @@ class _ProfilePageState extends State<ProfilePage> {
       _user = user;
       _isLoading = false;
     });
+    
+    // Only fetch retailer data for customers
+    if (user?.role.toLowerCase() == 'customer') {
+      _fetchRetailerData();
+    }
   }
 
   Future<void> _fetchRetailerData() async {
@@ -224,7 +228,7 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (_retailerData != null) _buildQRCode(),
+                if (_user?.role.toLowerCase() == 'customer' && _retailerData != null) _buildQRCode(),
                 const SizedBox(height: 24),
                 Expanded(
                   child: ListView(

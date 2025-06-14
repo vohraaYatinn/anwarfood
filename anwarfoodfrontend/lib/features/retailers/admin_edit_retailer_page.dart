@@ -240,52 +240,33 @@ class _AdminEditRetailerPageState extends State<AdminEditRetailerPage> {
       }
       
       if (_userRole == 'admin') {
-        // Admin fields (more comprehensive)
-        final adminFields = <String, String>{};
+        // Admin fields (more comprehensive) - Send all fields for admin
+        final adminFields = <String, String>{
+          // Required fields
+          'retName': _retailerNameController.text.trim(),
+          'retShopName': _shopNameController.text.trim(),
+          'retMobileNo': _mobileController.text.trim(),
+          'retAddress': _addressController.text.trim(),
+          'retEmailId': _emailController.text.trim(),
+          'retPinCode': _pinCodeController.text.trim(),
+          
+          // Location fields
+          'retCountry': _selectedCountry ?? 'India',
+          'retState': _selectedState ?? '',
+          'retCity': _selectedCity ?? '',
+          'retLat': _currentPosition.latitude.toString(),
+          'retLong': _currentPosition.longitude.toString(),
+          
+          // Status fields
+          'shopOpenStatus': _shopOpenStatus == 'Y' ? 'open' : 'closed',
+          'retDelStatus': 'active',
+          
+          // Optional fields (can be empty)
+          'retCode': _retailerCodeController.text.trim(),
+          'retType': _retailerTypeController.text.trim(),
+          'retGstNo': _gstController.text.trim(),
+        };
         
-        // Only add non-empty fields for admin
-        if (_retailerCodeController.text.isNotEmpty) {
-          adminFields['retCode'] = _retailerCodeController.text;
-        }
-        if (_retailerTypeController.text.isNotEmpty) {
-          adminFields['retType'] = _retailerTypeController.text;
-        }
-        if (_retailerNameController.text.isNotEmpty) {
-          adminFields['retName'] = _retailerNameController.text;
-        }
-        if (_shopNameController.text.isNotEmpty) {
-          adminFields['retShopName'] = _shopNameController.text;
-        }
-        if (_mobileController.text.isNotEmpty) {
-          adminFields['retMobileNo'] = _mobileController.text;
-        }
-        if (_addressController.text.isNotEmpty) {
-          adminFields['retAddress'] = _addressController.text;
-        }
-        if (_pinCodeController.text.isNotEmpty) {
-          adminFields['retPinCode'] = _pinCodeController.text;
-        }
-        if (_emailController.text.isNotEmpty) {
-          adminFields['retEmailId'] = _emailController.text;
-        }
-        if (_selectedCountry != null && _selectedCountry!.isNotEmpty) {
-          adminFields['retCountry'] = _selectedCountry!;
-        }
-        if (_selectedState != null && _selectedState!.isNotEmpty) {
-          adminFields['retState'] = _selectedState!;
-        }
-        if (_selectedCity != null && _selectedCity!.isNotEmpty) {
-          adminFields['retCity'] = _selectedCity!;
-        }
-        if (_gstController.text.isNotEmpty) {
-          adminFields['retGstNo'] = _gstController.text;
-        }
-        
-        // Always add these fields
-        adminFields['shopOpenStatus'] = _shopOpenStatus == 'Y' ? 'open' : 'closed';
-        adminFields['retLat'] = _currentPosition.latitude.toString();
-        adminFields['retLong'] = _currentPosition.longitude.toString();
-        adminFields['retDelStatus'] = 'active';
         print('Admin fields: $adminFields');
         request.fields.addAll(adminFields);
       } else {
@@ -321,8 +302,8 @@ class _AdminEditRetailerPageState extends State<AdminEditRetailerPage> {
         request.fields.addAll(employeeFields);
       }
       
-      // Final check to ensure we have fields to update
-      if (request.fields.isEmpty) {
+      // Final check to ensure we have fields to update (only for employee role)
+      if (_userRole != 'admin' && request.fields.isEmpty) {
         throw Exception('No fields to update. Please fill in at least one field.');
       }
 
@@ -711,29 +692,17 @@ class _AdminEditRetailerPageState extends State<AdminEditRetailerPage> {
                         TextFormField(
                           controller: _retailerCodeController,
                           decoration: const InputDecoration(
-                            labelText: 'Retailer Code',
+                            labelText: 'Retailer Code (Optional)',
                             border: OutlineInputBorder(),
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter retailer code';
-                            }
-                            return null;
-                          },
                         ),
                         const SizedBox(height: 16),
                         TextFormField(
                           controller: _retailerTypeController,
                           decoration: const InputDecoration(
-                            labelText: 'Retailer Type',
+                            labelText: 'Retailer Type (Optional)',
                             border: OutlineInputBorder(),
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return 'Please enter retailer type';
-                            }
-                            return null;
-                          },
                         ),
                         const SizedBox(height: 16),
                       ],

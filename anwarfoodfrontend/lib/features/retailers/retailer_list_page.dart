@@ -2,6 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../../services/retailer_service.dart';
+import '../../widgets/common_bottom_navbar.dart';
+import '../../services/auth_service.dart';
+import '../../models/user_model.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import '../../config/api_config.dart';
 
 class RetailerListPage extends StatefulWidget {
   const RetailerListPage({Key? key}) : super(key: key);
@@ -12,6 +18,7 @@ class RetailerListPage extends StatefulWidget {
 
 class _RetailerListPageState extends State<RetailerListPage> {
   final RetailerService _retailerService = RetailerService();
+  final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
   String? _error;
@@ -21,13 +28,28 @@ class _RetailerListPageState extends State<RetailerListPage> {
   final int _limit = 5;
   final ScrollController _scrollController = ScrollController();
   bool _isSearching = false;
+  User? _user;
 
   @override
   void initState() {
     super.initState();
+    _loadUserData();
     _loadRetailers();
     _scrollController.addListener(_onScroll);
     _searchController.addListener(_onSearchChanged);
+  }
+
+  Future<void> _loadUserData() async {
+    try {
+      final user = await _authService.getUser();
+      if (mounted) {
+        setState(() {
+          _user = user;
+        });
+      }
+    } catch (e) {
+      // Handle error silently
+    }
   }
 
   @override
@@ -158,8 +180,33 @@ class _RetailerListPageState extends State<RetailerListPage> {
     try {
       print('Scanning QR code: $qrValue');
       
-      // Get retailer by QR code (which contains phone number)
-      final retailerData = await _retailerService.getRetailerByPhone(qrValue);
+      Map<String, dynamic> retailerData;
+      
+      // Use different API based on user role
+      if (_user?.role.toLowerCase() == 'employee') {
+        // For employees, use the employee-specific API
+        final token = await _authService.getToken();
+        if (token == null) throw Exception('No authentication token found');
+        
+        final response = await http.get(
+          Uri.parse('${ApiConfig.baseUrl}/api/employee/get-retailer-by-phone/$qrValue'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        );
+        
+        final data = jsonDecode(response.body);
+        
+        if (data['success'] == true) {
+          retailerData = data['data'];
+        } else {
+          throw Exception(data['message'] ?? 'Retailer not found');
+        }
+      } else {
+        // For admin and other roles, use the existing service method
+        retailerData = await _retailerService.getRetailerByPhone(qrValue);
+      }
       
       print('Retailer found: ${retailerData['RET_NAME']}');
       
@@ -401,52 +448,9 @@ class _RetailerListPageState extends State<RetailerListPage> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF9B1B1B),
-        unselectedItemColor: Colors.grey,
-        currentIndex: 2,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushNamed(context, '/orders');
-              break;
-            case 1:
-              Navigator.pushNamed(context, '/product-list');
-              break;
-            case 2:
-              // Already on retailers page
-              break;
-            case 3:
-              Navigator.pushNamed(context, '/home');
-              break;
-            case 4:
-              Navigator.pushNamed(context, '/profile');
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            label: 'ORDERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_bag_outlined),
-            label: 'PRODUCTS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.storefront_outlined),
-            label: 'RETAILERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'SEARCH',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: 'ACCOUNT',
-          ),
-        ],
+      bottomNavigationBar: CommonBottomNavBar(
+        currentIndex: 2, // Retailer list page is the RETAILERS tab
+        user: _user,
       ),
     );
   }

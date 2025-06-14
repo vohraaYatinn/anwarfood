@@ -13,6 +13,7 @@ import '../../config/api_config.dart';
 import '../../services/retailer_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../widgets/common_bottom_navbar.dart';
 
 class OrdersPage extends StatefulWidget {
   const OrdersPage({Key? key}) : super(key: key);
@@ -161,11 +162,46 @@ class _OrdersPageState extends State<OrdersPage> {
         _error = '';
       });
 
-      final response = _user?.role.toLowerCase() == 'admin'
-          ? await _orderService.getAdminOrders('pending')
-          : _user?.role.toLowerCase() == 'employee'
-          ? await _orderService.getEmployeeOrders()
-          : await _orderService.getOrders();
+      final token = await _authService.getToken();
+      if (token == null) throw Exception('No authentication token found');
+      
+      Map<String, dynamic> response;
+      http.Response apiResponse;
+      
+      if (_user?.role.toLowerCase() == 'admin') {
+        // Admin: fetch all orders with pending status
+        apiResponse = await http.get(
+          Uri.parse('${ApiConfig.baseUrl}/api/admin/fetch-all-orders?status=pending'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        );
+      } else if (_user?.role.toLowerCase() == 'employee') {
+        // Employee: fetch orders with confirmed status and limit of 5
+        apiResponse = await http.get(
+          Uri.parse('${ApiConfig.baseUrl}/api/employee/orders?status=confirmed&limit=5'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        );
+      } else {
+        // Customer: fetch customer orders
+        apiResponse = await http.get(
+          Uri.parse('${ApiConfig.baseUrl}/api/orders/list'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+        );
+      }
+      
+      if (apiResponse.statusCode == 200) {
+        response = jsonDecode(apiResponse.body);
+      } else {
+        throw Exception('Failed to load orders: ${apiResponse.statusCode}');
+      }
 
       setState(() {
         if (_user?.role.toLowerCase() == 'employee') {
@@ -298,12 +334,8 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
           );
           
-          // Navigate to home page
-          Navigator.pushNamedAndRemoveUntil(
-            context,
-            '/home',
-            (route) => false,
-          );
+          // Navigate to cart page after selecting retailer
+          Navigator.pushReplacementNamed(context, '/cart');
         }
       } else {
         print('Retailer not found: ${data['message']}');
@@ -698,52 +730,9 @@ class _OrdersPageState extends State<OrdersPage> {
             ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF9B1B1B),
-        unselectedItemColor: Colors.grey,
-        currentIndex: 0,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              // Already on orders
-              break;
-            case 1:
-              Navigator.pushNamed(context, '/product-list');
-              break;
-            case 2:
-              Navigator.pushNamed(context, '/self-retailer-detail');
-              break;
-            case 3:
-              Navigator.pushNamed(context, '/home');
-              break;
-            case 4:
-              Navigator.pushNamed(context, '/profile');
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            label: 'ORDERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_bag_outlined),
-            label: 'PRODUCTS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.storefront_outlined),
-            label: 'RETAILERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'SEARCH',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: 'ACCOUNT',
-          ),
-        ],
+      bottomNavigationBar: CommonBottomNavBar(
+        currentIndex: 0, // Orders page is the ORDERS tab
+        user: _user,
       ),
       floatingActionButton: _user?.role.toLowerCase() == 'employee'
           ? FloatingActionButton(

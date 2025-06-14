@@ -13,6 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
+import '../../widgets/common_bottom_navbar.dart';
 
 class ProductListPage extends StatefulWidget {
   const ProductListPage({Key? key}) : super(key: key);
@@ -881,52 +882,9 @@ class _ProductListPageState extends State<ProductListPage> {
                 child: const Icon(Icons.add, color: Colors.white),
               )
             : null,
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF9B1B1B),
-        unselectedItemColor: Colors.grey,
-        currentIndex: 1,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushNamed(context, '/orders');
-              break;
-            case 1:
-              // Already on products
-              break;
-            case 2:
-              Navigator.pushNamed(context, '/self-retailer-detail');
-              break;
-            case 3:
-              Navigator.pushNamed(context, '/home');
-              break;
-            case 4:
-              Navigator.pushNamed(context, '/profile');
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            label: 'ORDERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_bag_outlined),
-            label: 'PRODUCTS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.storefront_outlined),
-            label: 'RETAILERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'SEARCH',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: 'ACCOUNT',
-          ),
-        ],
+      bottomNavigationBar: CommonBottomNavBar(
+        currentIndex: 1, // Product list page is the PRODUCTS tab
+        user: _user,
       ),
     );
   }

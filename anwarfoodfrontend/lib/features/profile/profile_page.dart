@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../models/user_model.dart';
+import '../../widgets/common_bottom_navbar.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({Key? key}) : super(key: key);
@@ -166,52 +167,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 ],
               ),
             ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: const Color(0xFF9B1B1B),
-        unselectedItemColor: Colors.grey,
-        currentIndex: 4,
-        onTap: (index) {
-          switch (index) {
-            case 0:
-              Navigator.pushNamed(context, '/orders');
-              break;
-            case 1:
-              Navigator.pushNamed(context, '/product-list');
-              break;
-            case 2:
-              Navigator.pushNamed(context, '/self-retailer-detail');
-              break;
-            case 3:
-              Navigator.pushNamed(context, '/home');
-              break;
-            case 4:
-              // Already on profile
-              break;
-          }
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart_outlined),
-            label: 'ORDERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_bag_outlined),
-            label: 'PRODUCTS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.storefront_outlined),
-            label: 'RETAILERS',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: 'SEARCH',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: 'ACCOUNT',
-          ),
-        ],
+      bottomNavigationBar: CommonBottomNavBar(
+        currentIndex: 4, // Profile page is the ACCOUNT tab
+        user: _user,
       ),
     );
   }
