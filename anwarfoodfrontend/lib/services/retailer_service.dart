@@ -110,14 +110,8 @@ class RetailerService {
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         if (data['success'] == true) {
-          // Handle different response structures based on role
-          if (userRole == 'admin') {
-            // Admin endpoint returns data directly as array
+          // Both admin and employee endpoints return data directly as array
             return (data['data'] as List).cast<Map<String, dynamic>>();
-          } else {
-            // Employee endpoint returns data with retailers key
-            return (data['data']['retailers'] as List).cast<Map<String, dynamic>>();
-          }
         } else {
           throw Exception(data['message'] ?? 'Failed to search retailers');
         }

@@ -277,7 +277,13 @@ const editProduct = async (req, res) => {
       );
     }
 
-    // Handle barcodes
+    // Handle barcodes - First delete existing barcodes, then add new ones
+    // Always delete existing barcodes first
+    await connection.query(
+      'DELETE FROM product_barcodes WHERE PRDB_PROD_ID = ?',
+      [productId]
+    );
+
     if (parsedBarcodes && parsedBarcodes.length > 0) {
       // Get the last barcode code
       const [lastBarcode] = await connection.query(
@@ -311,6 +317,12 @@ const editProduct = async (req, res) => {
       // Update product to indicate it has barcodes
       await connection.query(
         'UPDATE product SET IS_BARCODE_AVAILABLE = "Y" WHERE PROD_ID = ?',
+        [productId]
+      );
+    } else {
+      // If no barcodes provided, update product to indicate no barcodes
+      await connection.query(
+        'UPDATE product SET IS_BARCODE_AVAILABLE = "N" WHERE PROD_ID = ?',
         [productId]
       );
     }
@@ -1032,13 +1044,6 @@ const editRetailer = async (req, res) => {
       updateValues.push(RET_CITY);
     }
     if (RET_GST_NO !== undefined) {
-      // Validate GST number format (basic validation)
-      if (RET_GST_NO && !/^\d{2}[A-Z]{5}\d{4}[A-Z]{1}[A-Z\d]{1}[Z]{1}[A-Z\d]{1}$/.test(RET_GST_NO)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid GST number format'
-        });
-      }
       updateFields.push('RET_GST_NO = ?');
       updateValues.push(RET_GST_NO);
     }

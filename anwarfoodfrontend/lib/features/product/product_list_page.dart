@@ -623,7 +623,7 @@ class _ProductListPageState extends State<ProductListPage> {
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(12),
                                           child: Image.network(
-                                            subCat.imageUrl,
+                                            '${ApiConfig.baseUrl}/uploads/subcategory/${subCat.imageUrl}',
                                             width: 52,
                                             height: 52,
                                             fit: BoxFit.cover,

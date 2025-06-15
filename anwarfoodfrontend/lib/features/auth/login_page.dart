@@ -60,15 +60,27 @@ class _LoginPageState extends State<LoginPage> {
           );
         }
       } else {
+        final errorMsg = response['message']?.toString().trim() ?? 'Login failed';
+        print('Login failed with message: "$errorMsg"');
         setState(() {
-          _errorMessage = response['message'] ?? 'Login failed';
+          _errorMessage = errorMsg.isEmpty ? 'Login failed. Please check your credentials.' : errorMsg;
         });
       }
     } catch (e) {
+      print('Login exception: $e');
+      String errorMsg = 'Login failed. Make sure you enter correct id and password';
+      
+      if (e.toString().contains('Exception:')) {
+        final splitMsg = e.toString().split('Exception: ');
+        if (splitMsg.length > 1 && splitMsg[1].trim().isNotEmpty) {
+          errorMsg = splitMsg[1].trim();
+        }
+      } else if (e.toString().trim().isNotEmpty) {
+        errorMsg = e.toString().trim();
+      }
+      
       setState(() {
-        _errorMessage = e.toString().contains('Exception:') 
-            ? e.toString().split('Exception: ')[1]
-            : 'An error occurred. Please try again.';
+        _errorMessage = errorMsg;
       });
     } finally {
       setState(() {
@@ -188,15 +200,34 @@ class _LoginPageState extends State<LoginPage> {
                       },
                     ),
                   ),
-                  if (_errorMessage != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 16.0),
-                      child: Text(
-                        _errorMessage!,
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontSize: 14,
-                        ),
+                  if (_errorMessage != null && _errorMessage!.trim().isNotEmpty)
+                    Container(
+                      margin: const EdgeInsets.only(top: 16.0),
+                      padding: const EdgeInsets.all(12.0),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            color: Colors.red.shade700,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!.trim(),
+                              style: TextStyle(
+                                color: Colors.red.shade700,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   const SizedBox(height: 32),

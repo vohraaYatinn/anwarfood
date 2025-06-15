@@ -517,10 +517,27 @@ class _EditProductPageState extends State<EditProductPage> {
       if (_prodImage2 != null) files['prodImage2'] = _prodImage2!;
       if (_prodImage3 != null) files['prodImage3'] = _prodImage3!;
 
-      print('Sending product data to API:');
-      print(productData);
-      print('Files: ${files.keys.toList()}');
+      print('=== EDIT PRODUCT PAYLOAD DEBUG ===');
+      print('Product ID: ${_product!.id}');
+      print('Product Data:');
+      productData.forEach((key, value) {
+        print('  $key: $value (${value.runtimeType})');
+      });
+      print('');
+      print('Formatted Units JSON: ${jsonEncode(formattedUnits)}');
+      print('Barcodes JSON: ${jsonEncode(_barcodes)}');
+      print('');
+      print('Files to upload:');
+      files.forEach((key, file) {
+        print('  $key: ${file.path} (${file.lengthSync()} bytes)');
+      });
+      print('');
       print('Images to remove: $_imagesToRemove');
+      print('Existing images:');
+      print('  Image1: $_existingImage1');
+      print('  Image2: $_existingImage2');
+      print('  Image3: $_existingImage3');
+      print('=== END PAYLOAD DEBUG ===');
 
       final result = await _productService.updateProductWithImages(
         _product!.id, 

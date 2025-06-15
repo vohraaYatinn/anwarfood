@@ -243,31 +243,45 @@ class _AdminEditRetailerPageState extends State<AdminEditRetailerPage> {
         // Admin fields (more comprehensive) - Send all fields for admin
         final adminFields = <String, String>{
           // Required fields
-          'retName': _retailerNameController.text.trim(),
-          'retShopName': _shopNameController.text.trim(),
-          'retMobileNo': _mobileController.text.trim(),
-          'retAddress': _addressController.text.trim(),
-          'retEmailId': _emailController.text.trim(),
-          'retPinCode': _pinCodeController.text.trim(),
+          'RET_NAME': _retailerNameController.text.trim(),
+          'RET_SHOP_NAME': _shopNameController.text.trim(),
+          'RET_MOBILE_NO': _mobileController.text.trim(),
+          'RET_ADDRESS': _addressController.text.trim(),
+          'RET_EMAIL_ID': _emailController.text.trim(),
+          'RET_PIN_CODE': _pinCodeController.text.trim(),
           
           // Location fields
-          'retCountry': _selectedCountry ?? 'India',
-          'retState': _selectedState ?? '',
-          'retCity': _selectedCity ?? '',
-          'retLat': _currentPosition.latitude.toString(),
-          'retLong': _currentPosition.longitude.toString(),
+          'RET_COUNTRY': _selectedCountry ?? 'India',
+          'RET_STATE': _selectedState ?? '',
+          'RET_CITY': _selectedCity ?? '',
+          'RET_LAT': _currentPosition.latitude.toString(),
+          'RET_LONG': _currentPosition.longitude.toString(),
           
           // Status fields
-          'shopOpenStatus': _shopOpenStatus == 'Y' ? 'open' : 'closed',
-          'retDelStatus': 'active',
+          'SHOP_OPEN_STATUS': _shopOpenStatus == 'Y' ? '1' : '0',
+          'RET_DEL_STATUS': 'active',
           
           // Optional fields (can be empty)
-          'retCode': _retailerCodeController.text.trim(),
-          'retType': _retailerTypeController.text.trim(),
-          'retGstNo': _gstController.text.trim(),
+          'RET_CODE': _retailerCodeController.text.trim(),
+          'RET_TYPE': _retailerTypeController.text.trim(),
+          'RET_GST_NO': _gstController.text.trim(),
         };
         
-        print('Admin fields: $adminFields');
+        print('=== ADMIN EDIT RETAILER PAYLOAD DEBUG ===');
+        print('Retailer ID: $_retailerId');
+        print('Endpoint: ${ApiConfig.baseUrl}/api/admin/edit-retailer/$_retailerId');
+        print('Admin fields:');
+        adminFields.forEach((key, value) {
+          print('  $key: $value');
+        });
+        print('Image field name: profileImage');
+        print('Image selected: ${_selectedImage != null}');
+        if (_selectedImage != null) {
+          print('Image path: ${_selectedImage!.path}');
+          print('Image size: ${_selectedImage!.lengthSync()} bytes');
+        }
+        print('=== END PAYLOAD DEBUG ===');
+        
         request.fields.addAll(adminFields);
       } else {
         // Employee fields (limited access)
@@ -326,8 +340,8 @@ class _AdminEditRetailerPageState extends State<AdminEditRetailerPage> {
             break;
         }
         
-        // Use different field names based on role
-        String imageFieldName = _userRole == 'admin' ? 'retPhoto' : 'profileImage';
+        // Use the correct field name expected by the backend middleware
+        String imageFieldName = 'profileImage';
         
         request.files.add(
           await http.MultipartFile.fromPath(
