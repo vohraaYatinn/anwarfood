@@ -7,7 +7,7 @@ const addToCart = async (req, res) => {
 
     // First check if product exists and get its details
     const [products] = await db.promise().query(
-      'SELECT * FROM product WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
+      'SELECT * FROM product_master WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
       [productId]
     );
 
@@ -72,7 +72,7 @@ const addToCartAuto = async (req, res) => {
 
     // First check if product exists and get its details
     const [products] = await db.promise().query(
-      'SELECT * FROM product WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
+      'SELECT * FROM product_master WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
       [productId]
     );
 
@@ -173,7 +173,7 @@ const addToCartByBarcode = async (req, res) => {
 
     // Check if product exists and get its details
     const [products] = await db.promise().query(
-      'SELECT * FROM product WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
+      'SELECT * FROM product_master WHERE PROD_ID = ? AND (DEL_STATUS IS NULL OR DEL_STATUS != "Y")',
       [productId]
     );
 
@@ -393,7 +393,7 @@ const fetchCart = async (req, res) => {
         pu.PU_PROD_RATE,
         pu.PU_STATUS
       FROM cart c
-      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_master p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
       WHERE c.USER_ID = ? AND p.DEL_STATUS != 'Y'
     `, [userId]);
@@ -540,16 +540,16 @@ const placeOrder = async (req, res) => {
       const userName = userInfo[0].USERNAME;
 
       // Get cart items with complete product details
-      const [cartItems] = await db.promise().query(`
-        SELECT c.*, p.PROD_NAME, p.PROD_MRP, p.PROD_SP, p.PROD_CODE, 
-               p.PROD_DESC, p.PROD_CGST, p.PROD_IGST, p.PROD_SGST,
-               p.PROD_IMAGE_1, p.PROD_IMAGE_2, p.PROD_IMAGE_3, p.IS_BARCODE_AVAILABLE,
-               pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
-        FROM cart c
-        JOIN product p ON c.PROD_ID = p.PROD_ID
-        JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
-        WHERE c.USER_ID = ?
-      `, [userId]);
+            const [cartItems] = await db.promise().query(`
+      SELECT c.*, p.PROD_NAME, p.PROD_MRP, p.PROD_SP, p.PROD_CODE,
+             p.PROD_DESC, p.PROD_CGST, p.PROD_IGST, p.PROD_SGST,
+             p.PROD_IMAGE_1, p.PROD_IMAGE_2, p.PROD_IMAGE_3, p.IS_BARCODE_AVAILABLE,
+             pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
+      FROM cart c
+      JOIN product_master p ON c.PROD_ID = p.PROD_ID
+      JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
+      WHERE c.USER_ID = ?
+    `, [userId]);
 
       if (cartItems.length === 0) {
         await db.promise().query('ROLLBACK');
@@ -769,7 +769,7 @@ const increaseQuantity = async (req, res) => {
     const [updatedItem] = await db.promise().query(`
       SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE, pu.PU_PROD_UNIT_VALUE
       FROM cart c
-      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_master p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
       WHERE c.CART_ID = ? AND c.USER_ID = ?
     `, [cartId, userId]);
@@ -846,7 +846,7 @@ const decreaseQuantity = async (req, res) => {
     const [updatedItem] = await db.promise().query(`
       SELECT c.*, p.PROD_NAME, pu.PU_PROD_RATE, pu.PU_PROD_UNIT_VALUE
       FROM cart c
-      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_master p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
       WHERE c.CART_ID = ? AND c.USER_ID = ?
     `, [cartId, userId]);

@@ -239,7 +239,8 @@ const getOrderDetails = async (req, res) => {
 const updateOrderStatus = async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status } = req.body;
+    const { status, long, lat } = req.body;
+    const employeeUserId = req.user.USER_ID; // Get employee user ID from JWT token
 
     if (!status) {
       return res.status(400).json({
@@ -282,15 +283,35 @@ const updateOrderStatus = async (req, res) => {
     // Get uploaded image filename if present
     const paymentImage = req.uploadedFile ? req.uploadedFile.filename : orders[0].CO_IMAGE;
 
-    // Update order status and payment image
+    // Build dynamic update query based on provided fields
+    let updateFields = [
+      'CO_STATUS = ?',
+      'CO_IMAGE = ?',
+      'PAYMENT_IMAGE = ?',
+      'CO_DELIVER_BY = ?',
+      'UPDATED_DATE = NOW()'
+    ];
+    let updateValues = [status.toLowerCase(), paymentImage, paymentImage, employeeUserId];
+
+    // Add delivery coordinates if provided
+    if (lat !== undefined) {
+      updateFields.push('CO_DELIVERY_LAT = ?');
+      updateValues.push(lat);
+    }
+    if (long !== undefined) {
+      updateFields.push('CO_DELIVERY_LONG = ?');
+      updateValues.push(long);
+    }
+
+    // Add orderId for WHERE clause
+    updateValues.push(orderId);
+
+    // Update order status, payment image, delivery person, and coordinates
     await db.promise().query(
       `UPDATE cust_order 
-       SET CO_STATUS = ?, 
-           CO_IMAGE = ?,
-           PAYMENT_IMAGE = ?,
-           UPDATED_DATE = NOW()
+       SET ${updateFields.join(', ')}
        WHERE CO_ID = ?`,
-      [status.toLowerCase(), paymentImage, paymentImage, orderId]
+      updateValues
     );
 
     // If status is delivered, generate invoice PDF and QR code, and insert into invoice_master and invoice_detail
@@ -382,7 +403,12 @@ const updateOrderStatus = async (req, res) => {
         orderId,
         oldStatus: currentStatus,
         newStatus: status.toLowerCase(),
+        deliveredBy: employeeUserId,
         paymentImage: paymentImage ? `/uploads/orders/${paymentImage}` : null,
+        deliveryCoordinates: {
+          latitude: lat || null,
+          longitude: long || null
+        },
         updatedAt: new Date()
       }
     });
@@ -440,7 +466,7 @@ const placeOrderForCustomer = async (req, res) => {
              p.PROD_IMAGE_1, p.PROD_IMAGE_2, p.PROD_IMAGE_3, p.IS_BARCODE_AVAILABLE,
              pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE, pu.PU_PROD_RATE
       FROM cart c
-      JOIN product p ON c.PROD_ID = p.PROD_ID
+      JOIN product_master p ON c.PROD_ID = p.PROD_ID
       JOIN product_unit pu ON c.UNIT_ID = pu.PU_ID
       WHERE c.USER_ID = ?
     `, [employeeUserId]);
@@ -491,8 +517,8 @@ const placeOrderForCustomer = async (req, res) => {
     // Get retailer and customer details
     const [retailerDetails] = await connection.query(`
       SELECT RET_ID, RET_NAME, RET_MOBILE_NO FROM retailer_info 
-      WHERE USER_ID = ? AND RET_DEL_STATUS != 'Y'
-    `, [retailerUserId]);
+      WHERE RET_MOBILE_NO = ? AND RET_DEL_STATUS != 'Y'
+    `, [phoneNumber]);
 
     const retailerInfo = retailerDetails.length > 0 ? retailerDetails[0] : null;
     const totalQuantity = cartItems.reduce((total, item) => total + item.QUANTITY, 0);

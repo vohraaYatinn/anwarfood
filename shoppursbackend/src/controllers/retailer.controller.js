@@ -298,7 +298,9 @@ const updateRetailerProfile = async (req, res) => {
       RET_GST_NO,
       RET_LAT,
       RET_LONG,
-      SHOP_OPEN_STATUS
+      SHOP_OPEN_STATUS,
+      long, // Optional longitude parameter
+      lat   // Optional latitude parameter
     } = req.body;
 
     // First, get the user's mobile number
@@ -382,13 +384,18 @@ const updateRetailerProfile = async (req, res) => {
       updateFields.push('RET_GST_NO = ?');
       updateValues.push(RET_GST_NO);
     }
-    if (RET_LAT !== undefined) {
+    // Handle latitude - prioritize 'lat' parameter over 'RET_LAT'
+    const latValue = lat !== undefined ? lat : RET_LAT;
+    if (latValue !== undefined) {
       updateFields.push('RET_LAT = ?');
-      updateValues.push(RET_LAT);
+      updateValues.push(latValue);
     }
-    if (RET_LONG !== undefined) {
+    
+    // Handle longitude - prioritize 'long' parameter over 'RET_LONG'
+    const longValue = long !== undefined ? long : RET_LONG;
+    if (longValue !== undefined) {
       updateFields.push('RET_LONG = ?');
-      updateValues.push(RET_LONG);
+      updateValues.push(longValue);
     }
     if (SHOP_OPEN_STATUS !== undefined) {
       updateFields.push('SHOP_OPEN_STATUS = ?');
