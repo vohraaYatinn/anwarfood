@@ -48,7 +48,7 @@ Access to fetch at 'http://192.168.29.96:3000/api/auth/login' from origin 'http:
 
 3. **Test CORS Fix:**
    ```bash
-   cd shoppurs
+   cd anwarfoodfrontend
    flutter run -d chrome
    ```
 
@@ -168,7 +168,7 @@ Startup Connectivity Status: Connected successfully
 4. Test endpoints manually
 
 ### For Frontend Updates:
-1. Update code in `shoppurs/`
+1. Update code in `anwarfoodfrontend/`
 2. Run `flutter clean && flutter pub get`
 3. Build APK: `flutter build apk --release`
 4. Test on device before distribution
