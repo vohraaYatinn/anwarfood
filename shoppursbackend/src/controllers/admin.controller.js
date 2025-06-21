@@ -2,6 +2,7 @@ const { pool: db } = require('../config/database');
 const bcrypt = require('bcryptjs');
 const path = require('path');
 const QRCode = require('qrcode');
+const { base_url } = require('../environment');
 
 // Create directory function
 function createDirectory(dirPath) {
@@ -155,9 +156,9 @@ const addProduct = async (req, res) => {
       data: {
         product: {
           ...createdProduct[0],
-          PROD_IMAGE_1: createdProduct[0].PROD_IMAGE_1 ? `/uploads/products/${createdProduct[0].PROD_IMAGE_1}` : null,
-          PROD_IMAGE_2: createdProduct[0].PROD_IMAGE_2 ? `/uploads/products/${createdProduct[0].PROD_IMAGE_2}` : null,
-          PROD_IMAGE_3: createdProduct[0].PROD_IMAGE_3 ? `/uploads/products/${createdProduct[0].PROD_IMAGE_3}` : null
+          PROD_IMAGE_1: createdProduct[0].PROD_IMAGE_1 ? `${base_url}/uploads/products/${createdProduct[0].PROD_IMAGE_1}` : null,
+          PROD_IMAGE_2: createdProduct[0].PROD_IMAGE_2 ? `${base_url}/uploads/products/${createdProduct[0].PROD_IMAGE_2}` : null,
+          PROD_IMAGE_3: createdProduct[0].PROD_IMAGE_3 ? `${base_url}/uploads/products/${createdProduct[0].PROD_IMAGE_3}` : null
         },
         units: productUnitsResult,
         barcodes: productBarcodes
@@ -363,9 +364,9 @@ const editProduct = async (req, res) => {
       data: {
         product: {
           ...updatedProduct[0],
-          PROD_IMAGE_1: updatedProduct[0].PROD_IMAGE_1 ? `/uploads/products/${updatedProduct[0].PROD_IMAGE_1}` : null,
-          PROD_IMAGE_2: updatedProduct[0].PROD_IMAGE_2 ? `/uploads/products/${updatedProduct[0].PROD_IMAGE_2}` : null,
-          PROD_IMAGE_3: updatedProduct[0].PROD_IMAGE_3 ? `/uploads/products/${updatedProduct[0].PROD_IMAGE_3}` : null
+          PROD_IMAGE_1: updatedProduct[0].PROD_IMAGE_1 ? `${base_url}/uploads/products/${updatedProduct[0].PROD_IMAGE_1}` : null,
+          PROD_IMAGE_2: updatedProduct[0].PROD_IMAGE_2 ? `${base_url}/uploads/products/${updatedProduct[0].PROD_IMAGE_2}` : null,
+          PROD_IMAGE_3: updatedProduct[0].PROD_IMAGE_3 ? `${base_url}/uploads/products/${updatedProduct[0].PROD_IMAGE_3}` : null
         },
         units: activeUnits,
         barcodes: activeBarcodes
@@ -1139,7 +1140,7 @@ const editRetailer = async (req, res) => {
     // Add photo URL if photo exists
     const retailerData = updatedRetailer[0];
     if (retailerData.RET_PHOTO) {
-      retailerData.RET_PHOTO_URL = `http://localhost:3000/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
+      retailerData.RET_PHOTO_URL = `${base_url}/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
     }
 
     res.json({
@@ -1148,7 +1149,7 @@ const editRetailer = async (req, res) => {
       data: retailerData,
       uploadedFile: req.uploadedFile ? {
         filename: req.uploadedFile.filename,
-        url: `http://localhost:3000/uploads/retailers/profiles/${req.uploadedFile.filename}`
+        url: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`
       } : null,
       updated_by: req.user.USERNAME,
       updated_fields: updateFields.length - 2 // Exclude UPDATED_DATE and UPDATED_BY from count
