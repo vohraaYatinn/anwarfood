@@ -113,9 +113,8 @@ const getOrderDetails = async (req, res) => {
              cod.PROD_ID, cod.COD_QTY as QUANTITY, cod.PROD_SP as UNIT_PRICE,
              (cod.COD_QTY * cod.PROD_SP) as TOTAL_PRICE,
              cod.PROD_NAME, cod.PROD_IMAGE_1, cod.PROD_UNIT,
-             pu.PU_PROD_UNIT, pu.PU_PROD_UNIT_VALUE
+             cod.PROD_UNIT as PU_PROD_UNIT, '' as PU_PROD_UNIT_VALUE
       FROM cust_order_details cod
-      LEFT JOIN product_unit pu ON cod.PROD_UNIT = pu.PU_PROD_UNIT
       WHERE cod.COD_CO_ID = ?
     `, [orderId]);
 
