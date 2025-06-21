@@ -1,4 +1,5 @@
 const { pool: db } = require('../config/database');
+const { base_url } = require('../environment');
 
 const getRetailerList = async (req, res) => {
   try {
@@ -434,7 +435,7 @@ const updateRetailerProfile = async (req, res) => {
     // Add photo URL if photo exists
     const retailerData = updatedRetailer[0];
     if (retailerData.RET_PHOTO) {
-      retailerData.RET_PHOTO_URL = `http://localhost:3000/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
+      retailerData.RET_PHOTO_URL = `${base_url}/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
     }
 
     res.json({
@@ -443,7 +444,7 @@ const updateRetailerProfile = async (req, res) => {
       data: retailerData,
       uploadedFile: req.uploadedFile ? {
         filename: req.uploadedFile.filename,
-        url: `http://localhost:3000/uploads/retailers/profiles/${req.uploadedFile.filename}`
+        url: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`
       } : null
     });
 

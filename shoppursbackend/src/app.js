@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const { base_url } = require('./environment');
 
 const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/product.routes');
@@ -34,7 +35,7 @@ const corsOptions = {
     
     // Fallback for specific origins
     const allowedOrigins = [
-    'http://localhost:3000',
+    base_url,
     'http://localhost:65109',
     'http://localhost:65100',
     'http://localhost:65111',
@@ -69,7 +70,7 @@ app.use('/uploads', express.static('uploads'));
 app.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'AnwarFood API is running',
+    message: 'Shoppurs API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
@@ -79,7 +80,7 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Welcome to AnwarFood API',
+    message: 'Welcome to Shoppurs',
     version: '1.0.0'
   });
 });
