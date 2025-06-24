@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const { base_url } = require('./environment');
 
 const authRoutes = require('./routes/auth.routes');
 const productRoutes = require('./routes/product.routes');
@@ -12,6 +13,7 @@ const retailerRoutes = require('./routes/retailer.routes');
 const adminRoutes = require('./routes/admin.routes');
 const employeeRoutes = require('./routes/employee.routes');
 const settingsRoutes = require('./routes/settings.routes');
+const userRoutes = require('./routes/user.routes');
 
 const app = express();
 
@@ -33,7 +35,7 @@ const corsOptions = {
     
     // Fallback for specific origins
     const allowedOrigins = [
-    'http://localhost:3000',
+    base_url,
     'http://localhost:65109',
     'http://localhost:65100',
     'http://localhost:65111',
@@ -68,7 +70,7 @@ app.use('/uploads', express.static('uploads'));
 app.get('/health', (req, res) => {
   res.json({
     success: true,
-    message: 'AnwarFood API is running',
+    message: 'Shoppurs API is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
@@ -78,7 +80,7 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.json({
     success: true,
-    message: 'Welcome to AnwarFood API',
+    message: 'Welcome to Shoppurs',
     version: '1.0.0'
   });
 });
@@ -94,6 +96,7 @@ app.use('/api/retailers', retailerRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/users', userRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

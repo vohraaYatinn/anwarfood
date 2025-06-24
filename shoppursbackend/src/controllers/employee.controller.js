@@ -1,4 +1,16 @@
 const { pool: db } = require('../config/database');
+const bcrypt = require('bcryptjs');
+const path = require('path');
+const QRCode = require('qrcode');
+const { base_url } = require('../environment');
+
+// Create directory function
+function createDirectory(dirPath) {
+  const fs = require('fs');
+  if (!fs.existsSync(dirPath)) {
+    fs.mkdirSync(dirPath, { recursive: true });
+  }
+}
 
 // Fetch all orders with status filtering
 const fetchOrders = async (req, res) => {
@@ -201,20 +213,19 @@ const getOrderDetails = async (req, res) => {
 
     // Get order items if needed
     const [orderItems] = await db.promise().query(
-      `SELECT 
-        cod.COD_ID as ORDER_ITEM_ID,
-        cod.COD_CO_ID as ORDER_ID,
-        cod.PROD_ID,
-        cod.COD_QTY as QUANTITY,
-        cod.PROD_SP as UNIT_PRICE,
-        (cod.COD_QTY * cod.PROD_SP) as TOTAL_PRICE,
-        cod.PROD_NAME,
-        cod.PROD_IMAGE_1,
-        cod.PROD_UNIT as PU_PROD_UNIT,
-        pu.PU_PROD_UNIT_VALUE
-      FROM cust_order_details cod
-      LEFT JOIN product_unit pu ON cod.PROD_UNIT = pu.PU_PROD_UNIT
-      WHERE cod.COD_CO_ID = ?`,
+      `SELECT cod.COD_ID as ORDER_ITEM_ID, cod.COD_CO_ID as ORDER_ID,
+              cod.PROD_ID, cod.COD_QTY as QUANTITY, cod.PROD_SP as UNIT_PRICE,
+              (cod.COD_QTY * cod.PROD_SP) as TOTAL_PRICE,
+              cod.PROD_NAME, cod.PROD_CODE, cod.PROD_MRP as PROD_MRP,
+              cod.PROD_SP, cod.PROD_IMAGE_1, cod.PROD_IMAGE_2, cod.PROD_IMAGE_3,
+              cod.PROD_UNIT as PU_PROD_UNIT, 
+              COALESCE(p.PROD_HSN_CODE, cod.PROD_BARCODE, '') as PROD_HSN_CODE,
+              COALESCE(cod.PROD_CGST, p.PROD_CGST, 0) as PROD_CGST,
+              COALESCE(cod.PROD_SGST, p.PROD_SGST, 0) as PROD_SGST,
+              COALESCE(cod.PROD_IGST, p.PROD_IGST, 0) as PROD_IGST
+       FROM cust_order_details cod
+       LEFT JOIN product_master p ON cod.PROD_ID = p.PROD_ID
+       WHERE cod.COD_CO_ID = ?`,
       [orderId]
     );
 
@@ -337,13 +348,39 @@ const updateOrderStatus = async (req, res) => {
                 (cod.COD_QTY * cod.PROD_SP) as TOTAL_PRICE,
                 cod.PROD_NAME, cod.PROD_CODE, cod.PROD_MRP as PROD_MRP,
                 cod.PROD_SP, cod.PROD_IMAGE_1, cod.PROD_IMAGE_2, cod.PROD_IMAGE_3,
-                cod.PROD_UNIT as PU_PROD_UNIT, '' as PROD_HSN_CODE
+                cod.PROD_UNIT as PU_PROD_UNIT, 
+                COALESCE(p.PROD_HSN_CODE, cod.PROD_BARCODE, '') as PROD_HSN_CODE,
+                COALESCE(cod.PROD_CGST, p.PROD_CGST, 0) as PROD_CGST,
+                COALESCE(cod.PROD_SGST, p.PROD_SGST, 0) as PROD_SGST,
+                COALESCE(cod.PROD_IGST, p.PROD_IGST, 0) as PROD_IGST
          FROM cust_order_details cod
+         LEFT JOIN product_master p ON cod.PROD_ID = p.PROD_ID
          WHERE cod.COD_CO_ID = ?`,
         [orderId]
       );
       // Generate invoice number (e.g., INV + orderId)
       const invoiceNumber = `INV${orderId}`;
+      
+      // Calculate tax totals from order items
+      let totalCGST = 0;
+      let totalSGST = 0;
+      let totalIGST = 0;
+      let totalTaxableValue = 0;
+
+      orderItems.forEach(item => {
+        const itemTaxableValue = parseFloat(item.PROD_SP || 0) * parseInt(item.QUANTITY || 0);
+        const cgstRate = parseFloat(item.PROD_CGST || 0);
+        const sgstRate = parseFloat(item.PROD_SGST || 0);
+        const igstRate = parseFloat(item.PROD_IGST || 0);
+        
+        totalTaxableValue += itemTaxableValue;
+        totalCGST += (itemTaxableValue * cgstRate) / 100;
+        totalSGST += (itemTaxableValue * sgstRate) / 100;
+        totalIGST += (itemTaxableValue * igstRate) / 100;
+      });
+
+      const totalTaxAmount = totalCGST + totalSGST + totalIGST;
+      
       // Generate PDF and QR code
       const invoicePath = await require('../utils/invoiceGenerator').generateInvoicePDF({ order, orderItems, invoiceNumber });
       // Insert into invoice_master
@@ -361,11 +398,11 @@ const updateOrderStatus = async (req, res) => {
           order.USER_ADDRESS || order.DELIVERY_ADDRESS,
           order.MOBILE,
           '', // INVM_CUST_GST
-          0, // INVM_TOT_CGST
-          0, // INVM_TOT_SGST
-          0, // INVM_TOT_IGST
+          totalCGST.toFixed(2), // INVM_TOT_CGST
+          totalSGST.toFixed(2), // INVM_TOT_SGST
+          totalIGST.toFixed(2), // INVM_TOT_IGST
           0, // INVM_TOT_DISCOUNT_AMOUNT
-          0, // INVM_TOT_TAX_AMOUNT
+          totalTaxAmount.toFixed(2), // INVM_TOT_TAX_AMOUNT
           order.ORDER_TOTAL,
           order.ORDER_TOTAL,
           'active',
@@ -377,16 +414,21 @@ const updateOrderStatus = async (req, res) => {
       const invoiceId = invoiceResult.insertId;
       // Insert into invoice_detail for each item
       for (const item of orderItems) {
+        const itemTaxableValue = parseFloat(item.PROD_SP || 0) * parseInt(item.QUANTITY || 0);
+        const cgstAmount = (itemTaxableValue * parseFloat(item.PROD_CGST || 0)) / 100;
+        const sgstAmount = (itemTaxableValue * parseFloat(item.PROD_SGST || 0)) / 100;
+        const igstAmount = (itemTaxableValue * parseFloat(item.PROD_IGST || 0)) / 100;
+        
         await db.promise().query(
           `INSERT INTO invoice_detail (INVD_INVM_ID, INVD_PROD_ID, INVD_PROD_CODE, INVD_PROD_NAME, INVD_PROD_UNIT, INVD_QTY, INVD_HSN_CODE, INVD_MRP, INVD_SP, INVD_DISCOUNT_PERCENTAGE, INVD_DISCOUNT_AMOUNT, INVD_CGST, INVD_SGST, INVD_IGST, INVD_PROD_IMAGE_1, INVD_PROD_IMAGE_2, INVD_PROD_IMAGE_3, INVD_TAMOUNT, INVD_PROD_STATUS, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
-          [invoiceId, item.PROD_ID, item.PROD_CODE, item.PROD_NAME, item.PU_PROD_UNIT, item.QUANTITY, item.PROD_HSN_CODE, item.PROD_MRP, item.PROD_SP, item.PROD_IMAGE_1, item.PROD_IMAGE_2, item.PROD_IMAGE_3, item.TOTAL_PRICE, req.user.USERNAME || 'system', req.user.USERNAME || 'system']
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
+          [invoiceId, item.PROD_ID, item.PROD_CODE, item.PROD_NAME, item.PU_PROD_UNIT, item.QUANTITY, item.PROD_HSN_CODE, item.PROD_MRP, item.PROD_SP, cgstAmount.toFixed(2), sgstAmount.toFixed(2), igstAmount.toFixed(2), item.PROD_IMAGE_1, item.PROD_IMAGE_2, item.PROD_IMAGE_3, item.TOTAL_PRICE, req.user.USERNAME || 'system', req.user.USERNAME || 'system']
         );
       }
       // Update the cust_order table with the invoice URL
       await db.promise().query(
         'UPDATE cust_order SET INVOICE_URL = ? WHERE CO_ID = ?',
-        [`/uploads/invoice/${invoiceNumber}.pdf`, orderId]
+        [`${base_url}/uploads/invoice/${invoiceNumber}.pdf`, orderId]
       );
 
       // Update payment status in cust_payment table
@@ -404,7 +446,7 @@ const updateOrderStatus = async (req, res) => {
         oldStatus: currentStatus,
         newStatus: status.toLowerCase(),
         deliveredBy: employeeUserId,
-        paymentImage: paymentImage ? `/uploads/orders/${paymentImage}` : null,
+        paymentImage: paymentImage ? `${base_url}/uploads/orders/${paymentImage}` : null,
         deliveryCoordinates: {
           latitude: lat || null,
           longitude: long || null
@@ -569,7 +611,7 @@ const placeOrderForCustomer = async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     const [dwrData] = await connection.query(`
       SELECT DWR_ID FROM dwr_detail 
-      WHERE DWR_EMP_ID = ? AND DATE(DWR_SUBMIT) = ? AND DEL_STATUS = 0
+      WHERE DWR_EMP_ID = ? AND DATE(DWR_DATE) = ? AND DEL_STATUS = 0
       ORDER BY DWR_ID DESC
       LIMIT 1
     `, [employeeUserId, today]);
@@ -620,13 +662,39 @@ const placeOrderForCustomer = async (req, res) => {
               (cod.COD_QTY * cod.PROD_SP) as TOTAL_PRICE,
               cod.PROD_NAME, cod.PROD_CODE, cod.PROD_MRP as PROD_MRP,
               cod.PROD_SP, cod.PROD_IMAGE_1, cod.PROD_IMAGE_2, cod.PROD_IMAGE_3,
-              cod.PROD_UNIT as PU_PROD_UNIT, '' as PROD_HSN_CODE
+              cod.PROD_UNIT as PU_PROD_UNIT, 
+              COALESCE(p.PROD_HSN_CODE, cod.PROD_BARCODE, '') as PROD_HSN_CODE,
+              COALESCE(cod.PROD_CGST, p.PROD_CGST, 0) as PROD_CGST,
+              COALESCE(cod.PROD_SGST, p.PROD_SGST, 0) as PROD_SGST,
+              COALESCE(cod.PROD_IGST, p.PROD_IGST, 0) as PROD_IGST
        FROM cust_order_details cod
+       LEFT JOIN product_master p ON cod.PROD_ID = p.PROD_ID
        WHERE cod.COD_CO_ID = ?`,
       [orderId]
     );
     // Generate invoice number
     const invoiceNumber = `INV${orderId}`;
+    
+    // Calculate tax totals from order items
+    let totalCGST = 0;
+    let totalSGST = 0;
+    let totalIGST = 0;
+    let totalTaxableValue = 0;
+
+    orderItems.forEach(item => {
+      const itemTaxableValue = parseFloat(item.PROD_SP || 0) * parseInt(item.QUANTITY || 0);
+      const cgstRate = parseFloat(item.PROD_CGST || 0);
+      const sgstRate = parseFloat(item.PROD_SGST || 0);
+      const igstRate = parseFloat(item.PROD_IGST || 0);
+      
+      totalTaxableValue += itemTaxableValue;
+      totalCGST += (itemTaxableValue * cgstRate) / 100;
+      totalSGST += (itemTaxableValue * sgstRate) / 100;
+      totalIGST += (itemTaxableValue * igstRate) / 100;
+    });
+
+    const totalTaxAmount = totalCGST + totalSGST + totalIGST;
+    
     // Generate PDF and QR code
     const invoicePath = await require('../utils/invoiceGenerator').generateInvoicePDF({ order, orderItems, invoiceNumber });
     // Insert into invoice_master
@@ -644,11 +712,11 @@ const placeOrderForCustomer = async (req, res) => {
         order.USER_ADDRESS || order.DELIVERY_ADDRESS,
         order.MOBILE,
         '', // INVM_CUST_GST
-        0, // INVM_TOT_CGST
-        0, // INVM_TOT_SGST
-        0, // INVM_TOT_IGST
+        totalCGST.toFixed(2), // INVM_TOT_CGST
+        totalSGST.toFixed(2), // INVM_TOT_SGST
+        totalIGST.toFixed(2), // INVM_TOT_IGST
         0, // INVM_TOT_DISCOUNT_AMOUNT
-        0, // INVM_TOT_TAX_AMOUNT
+        totalTaxAmount.toFixed(2), // INVM_TOT_TAX_AMOUNT
         order.ORDER_TOTAL,
         order.ORDER_TOTAL,
         'active',
@@ -660,10 +728,15 @@ const placeOrderForCustomer = async (req, res) => {
     const invoiceId = invoiceResult.insertId;
     // Insert into invoice_detail for each item
     for (const item of orderItems) {
+      const itemTaxableValue = parseFloat(item.PROD_SP || 0) * parseInt(item.QUANTITY || 0);
+      const cgstAmount = (itemTaxableValue * parseFloat(item.PROD_CGST || 0)) / 100;
+      const sgstAmount = (itemTaxableValue * parseFloat(item.PROD_SGST || 0)) / 100;
+      const igstAmount = (itemTaxableValue * parseFloat(item.PROD_IGST || 0)) / 100;
+      
       await connection.query(
         `INSERT INTO invoice_detail (INVD_INVM_ID, INVD_PROD_ID, INVD_PROD_CODE, INVD_PROD_NAME, INVD_PROD_UNIT, INVD_QTY, INVD_HSN_CODE, INVD_MRP, INVD_SP, INVD_DISCOUNT_PERCENTAGE, INVD_DISCOUNT_AMOUNT, INVD_CGST, INVD_SGST, INVD_IGST, INVD_PROD_IMAGE_1, INVD_PROD_IMAGE_2, INVD_PROD_IMAGE_3, INVD_TAMOUNT, INVD_PROD_STATUS, CREATED_BY, UPDATED_BY, CREATED_DATE, UPDATED_DATE)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
-        [invoiceId, item.PROD_ID, item.PROD_CODE, item.PROD_NAME, item.PU_PROD_UNIT, item.QUANTITY, item.PROD_HSN_CODE, item.PROD_MRP, item.PROD_SP, item.PROD_IMAGE_1, item.PROD_IMAGE_2, item.PROD_IMAGE_3, item.TOTAL_PRICE, req.user.USERNAME || 'system', req.user.USERNAME || 'system']
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, 'A', ?, ?, NOW(), NOW())`,
+        [invoiceId, item.PROD_ID, item.PROD_CODE, item.PROD_NAME, item.PU_PROD_UNIT, item.QUANTITY, item.PROD_HSN_CODE, item.PROD_MRP, item.PROD_SP, cgstAmount.toFixed(2), sgstAmount.toFixed(2), igstAmount.toFixed(2), item.PROD_IMAGE_1, item.PROD_IMAGE_2, item.PROD_IMAGE_3, item.TOTAL_PRICE, req.user.USERNAME || 'system', req.user.USERNAME || 'system']
       );
     }
          // Create payment record in cust_payment table
@@ -711,7 +784,7 @@ const placeOrderForCustomer = async (req, res) => {
     // Update the cust_order table with the invoice URL
     await connection.query(
       'UPDATE cust_order SET INVOICE_URL = ? WHERE CO_ID = ?',
-      [`/uploads/invoice/${invoiceNumber}.pdf`, orderId]
+      [`${base_url}/uploads/invoice/${invoiceNumber}.pdf`, orderId]
     );
 
     // Commit transaction
@@ -725,7 +798,7 @@ const placeOrderForCustomer = async (req, res) => {
         orderNumber,
         orderTotal,
         invoiceNumber,
-        invoicePath: `/uploads/invoice/${invoiceNumber}.pdf`
+        invoicePath: `${base_url}/uploads/invoice/${invoiceNumber}.pdf`
       }
     });
 
@@ -1032,7 +1105,7 @@ const editRetailer = async (req, res) => {
     // Add photo URL if photo exists
     const retailerData = updatedRetailer[0];
     if (retailerData.RET_PHOTO) {
-      retailerData.RET_PHOTO_URL = `http://localhost:3000/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
+      retailerData.RET_PHOTO_URL = `${base_url}/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
     }
 
     res.json({
@@ -1041,7 +1114,7 @@ const editRetailer = async (req, res) => {
       data: retailerData,
       uploadedFile: req.uploadedFile ? {
         filename: req.uploadedFile.filename,
-        url: `http://localhost:3000/uploads/retailers/profiles/${req.uploadedFile.filename}`
+        url: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`
       } : null,
       updated_by: req.user.USERNAME,
       updated_fields: updateFields.length - 2 // Exclude UPDATED_DATE and UPDATED_BY from count
@@ -1107,7 +1180,7 @@ const getRetailerByPhone = async (req, res) => {
     // Add photo URL if photo exists
     const retailerData = retailer[0];
     if (retailerData.RET_PHOTO) {
-      retailerData.RET_PHOTO_URL = `http://localhost:3000/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
+      retailerData.RET_PHOTO_URL = `${base_url}/uploads/retailers/profiles/${retailerData.RET_PHOTO}`;
     }
 
     res.json({
@@ -1474,6 +1547,599 @@ const endDay = async (req, res) => {
   }
 };
 
+// ===== Customer Creation APIs for Employees =====
+
+// Create customer by employee (same functionality as admin but tracked as employee action)
+const createCustomerByEmployee = async (req, res) => {
+  const connection = await db.promise().getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const {
+      username,
+      email,
+      mobile,
+      password = '123456', // Default password
+      city,
+      province,
+      zip,
+      address,
+      // Address fields
+      addressDetails,
+      addressCity,
+      addressState,
+      addressCountry = 'India',
+      addressPincode,
+      landmark,
+      addressType = 'Home',
+      isDefaultAddress = true,
+      // Retailer location fields
+      lat,
+      long
+    } = req.body;
+
+    // Validate required fields
+    if (!username || !mobile) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Username and mobile number are required'
+      });
+    }
+
+    // Validate mobile number format
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test(mobile)) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid mobile number format'
+      });
+    }
+
+    // Check if user already exists
+    const [existingUser] = await connection.query(
+      'SELECT * FROM user_info WHERE EMAIL = ? OR MOBILE = ?',
+      [email || `customer_${mobile}@shop.com`, mobile]
+    );
+
+    if (existingUser.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Customer already exists with this email or mobile number'
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const customerEmail = email || `customer_${mobile}@shop.com`;
+
+    // Insert new customer
+    const [userResult] = await connection.query(
+      `INSERT INTO user_info (
+        UL_ID, USERNAME, EMAIL, MOBILE, PASSWORD, CITY, PROVINCE, ZIP, ADDRESS, 
+        CREATED_DATE, USER_TYPE, ISACTIVE, is_otp_verify, CREATED_BY
+      ) VALUES (
+        1, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'customer', 'Y', 1, ?
+      )`,
+      [username, customerEmail, mobile, hashedPassword, city, province, zip, address, req.user.USERNAME]
+    );
+
+    const userId = userResult.insertId;
+
+    // Create customer address if address details provided
+    if (addressDetails || addressCity) {
+      await connection.query(
+        `INSERT INTO customer_address (
+          USER_ID, ADDRESS, CITY, STATE, COUNTRY, PINCODE, LANDMARK, 
+          ADDRESS_TYPE, IS_DEFAULT, DEL_STATUS, CREATED_DATE
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', NOW())`,
+        [
+          userId,
+          addressDetails || address || 'Address not provided',
+          addressCity || city || 'City not provided',
+          addressState || province || 'State not provided',
+          addressCountry,
+          addressPincode || zip || '000000',
+          landmark,
+          addressType,
+          isDefaultAddress ? 1 : 0
+        ]
+      );
+    }
+
+    // Auto-create retailer profile
+    const [lastRetailer] = await connection.query(
+      'SELECT RET_CODE FROM retailer_info ORDER BY RET_ID DESC LIMIT 1'
+    );
+
+    // Generate next retailer code
+    let nextNumber = 1;
+    if (lastRetailer.length > 0) {
+      const lastCode = lastRetailer[0].RET_CODE;
+      const lastNumber = parseInt(lastCode.replace('RET', ''));
+      nextNumber = lastNumber + 1;
+    }
+
+    const retCode = `RET${nextNumber.toString().padStart(3, '0')}`;
+
+    // Create QR code directory
+    createDirectory(path.join(__dirname, '../../uploads/retailers/qrcode'));
+
+    let qrFileName = null;
+    try {
+      // Generate QR code for the phone number
+      qrFileName = `qr_${mobile}_${Date.now()}.png`;
+      const qrPath = path.join(__dirname, '../../uploads/retailers/qrcode', qrFileName);
+      
+      // Convert phone to string and add country code
+      const phoneWithCode = `+91${mobile.toString()}`;
+      
+      // Generate QR code
+      await QRCode.toFile(qrPath, phoneWithCode, {
+        errorCorrectionLevel: 'H',
+        width: 500,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#ffffff'
+        }
+      });
+    } catch (qrError) {
+      console.error('QR Code generation error:', qrError);
+      // Continue without QR code if generation fails
+    }
+
+    // Insert retailer profile
+    await connection.query(
+      `INSERT INTO retailer_info (
+        RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
+        RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY, RET_STATE, RET_CITY, 
+        RET_LAT, RET_LONG, RET_DEL_STATUS, CREATED_DATE, UPDATED_DATE, 
+        CREATED_BY, UPDATED_BY, BARCODE_URL
+      ) VALUES (
+        ?, 'Grocery', ?, ?, ?, ?, ?, 'default-photo.jpg', ?, ?, ?, 
+        ?, ?, 'active', NOW(), NOW(), ?, ?, ?
+      )`,
+      [
+        retCode,
+        username,
+        mobile,
+        addressDetails || address || 'Not provided',
+        addressPincode || zip || 0,
+        customerEmail,
+        addressCountry,
+        addressState || province || 'Not provided',
+        addressCity || city || 'Not provided',
+        lat || null,
+        long || null,
+        req.user.USERNAME,
+        req.user.USERNAME,
+        qrFileName
+      ]
+    );
+
+    await connection.commit();
+
+    // Get created customer details
+    const [customerDetails] = await connection.query(
+      `SELECT u.*, r.RET_ID, r.RET_CODE, r.RET_TYPE 
+       FROM user_info u 
+       LEFT JOIN retailer_info r ON u.MOBILE = r.RET_MOBILE_NO 
+       WHERE u.USER_ID = ?`,
+      [userId]
+    );
+
+    // Get customer addresses
+    const [addresses] = await connection.query(
+      'SELECT * FROM customer_address WHERE USER_ID = ? AND DEL_STATUS = "N"',
+      [userId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Customer and retailer profile created successfully by employee',
+      data: {
+        customer: customerDetails[0],
+        addresses: addresses,
+        createdBy: req.user.USERNAME,
+        createdByRole: 'employee',
+        defaultPassword: password
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Employee create customer error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating customer',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Create customer with multiple addresses by employee
+const createCustomerWithMultipleAddressesByEmployee = async (req, res) => {
+  const connection = await db.promise().getConnection();
+  
+  try {
+    await connection.beginTransaction();
+    
+    const {
+      username,
+      email,
+      mobile,
+      password = '123456', // Default password
+      city,
+      province,
+      zip,
+      address,
+      addresses = [], // Array of address objects
+      // Retailer location fields
+      lat,
+      long
+    } = req.body;
+
+    // Validate required fields
+    if (!username || !mobile) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Username and mobile number are required'
+      });
+    }
+
+    // Validate mobile number format
+    const mobileRegex = /^[6-9]\d{9}$/;
+    if (!mobileRegex.test(mobile)) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid mobile number format'
+      });
+    }
+
+    // Check if user already exists
+    const [existingUser] = await connection.query(
+      'SELECT * FROM user_info WHERE EMAIL = ? OR MOBILE = ?',
+      [email || `customer_${mobile}@shop.com`, mobile]
+    );
+
+    if (existingUser.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Customer already exists with this email or mobile number'
+      });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const customerEmail = email || `customer_${mobile}@shop.com`;
+
+    // Insert new customer
+    const [userResult] = await connection.query(
+      `INSERT INTO user_info (
+        UL_ID, USERNAME, EMAIL, MOBILE, PASSWORD, CITY, PROVINCE, ZIP, ADDRESS, 
+        CREATED_DATE, USER_TYPE, ISACTIVE, is_otp_verify, CREATED_BY
+      ) VALUES (
+        1, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), 'customer', 'Y', 1, ?
+      )`,
+      [username, customerEmail, mobile, hashedPassword, city, province, zip, address, req.user.USERNAME]
+    );
+
+    const userId = userResult.insertId;
+
+    // Create multiple addresses if provided
+    if (addresses && addresses.length > 0) {
+      for (let i = 0; i < addresses.length; i++) {
+        const addr = addresses[i];
+        await connection.query(
+          `INSERT INTO customer_address (
+            USER_ID, ADDRESS, CITY, STATE, COUNTRY, PINCODE, LANDMARK, 
+            ADDRESS_TYPE, IS_DEFAULT, DEL_STATUS, CREATED_DATE
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', NOW())`,
+          [
+            userId,
+            addr.address || 'Address not provided',
+            addr.city || 'City not provided',
+            addr.state || 'State not provided',
+            addr.country || 'India',
+            addr.pincode || '000000',
+            addr.landmark,
+            addr.addressType || 'Home',
+            (i === 0 || addr.isDefault) ? 1 : 0 // First address or explicitly marked as default
+          ]
+        );
+      }
+    } else {
+      // Create default address from basic info
+      await connection.query(
+        `INSERT INTO customer_address (
+          USER_ID, ADDRESS, CITY, STATE, COUNTRY, PINCODE, LANDMARK, 
+          ADDRESS_TYPE, IS_DEFAULT, DEL_STATUS, CREATED_DATE
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'N', NOW())`,
+        [
+          userId,
+          address || 'Address not provided',
+          city || 'City not provided',
+          province || 'State not provided',
+          'India',
+          zip || '000000',
+          null,
+          'Home',
+          1
+        ]
+      );
+    }
+
+    // Auto-create retailer profile (same as single address function)
+    const [lastRetailer] = await connection.query(
+      'SELECT RET_CODE FROM retailer_info ORDER BY RET_ID DESC LIMIT 1'
+    );
+
+    let nextNumber = 1;
+    if (lastRetailer.length > 0) {
+      const lastCode = lastRetailer[0].RET_CODE;
+      const lastNumber = parseInt(lastCode.replace('RET', ''));
+      nextNumber = lastNumber + 1;
+    }
+
+    const retCode = `RET${nextNumber.toString().padStart(3, '0')}`;
+
+    // Create QR code directory
+    createDirectory(path.join(__dirname, '../../uploads/retailers/qrcode'));
+
+    let qrFileName = null;
+    try {
+      qrFileName = `qr_${mobile}_${Date.now()}.png`;
+      const qrPath = path.join(__dirname, '../../uploads/retailers/qrcode', qrFileName);
+      const phoneWithCode = `+91${mobile.toString()}`;
+      
+      await QRCode.toFile(qrPath, phoneWithCode, {
+        errorCorrectionLevel: 'H',
+        width: 500,
+        margin: 1,
+        color: {
+          dark: '#000000',
+          light: '#ffffff'
+        }
+      });
+    } catch (qrError) {
+      console.error('QR Code generation error:', qrError);
+    }
+
+    // Insert retailer profile
+    await connection.query(
+      `INSERT INTO retailer_info (
+        RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
+        RET_EMAIL_ID, RET_PHOTO, RET_COUNTRY, RET_STATE, RET_CITY, 
+        RET_LAT, RET_LONG, RET_DEL_STATUS, CREATED_DATE, UPDATED_DATE, 
+        CREATED_BY, UPDATED_BY, BARCODE_URL
+      ) VALUES (
+        ?, 'Grocery', ?, ?, ?, ?, ?, 'default-photo.jpg', ?, ?, ?, 
+        ?, ?, 'active', NOW(), NOW(), ?, ?, ?
+      )`,
+      [
+        retCode,
+        username,
+        mobile,
+        address || 'Not provided',
+        zip || 0,
+        customerEmail,
+        'India',
+        province || 'Not provided',
+        city || 'Not provided',
+        lat || null,
+        long || null,
+        req.user.USERNAME,
+        req.user.USERNAME,
+        qrFileName
+      ]
+    );
+
+    await connection.commit();
+
+    // Get created customer details
+    const [customerDetails] = await connection.query(
+      `SELECT u.*, r.RET_ID, r.RET_CODE, r.RET_TYPE 
+       FROM user_info u 
+       LEFT JOIN retailer_info r ON u.MOBILE = r.RET_MOBILE_NO 
+       WHERE u.USER_ID = ?`,
+      [userId]
+    );
+
+    // Get customer addresses
+    const [customerAddresses] = await connection.query(
+      'SELECT * FROM customer_address WHERE USER_ID = ? AND DEL_STATUS = "N"',
+      [userId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Customer with multiple addresses and retailer profile created successfully by employee',
+      data: {
+        customer: customerDetails[0],
+        addresses: customerAddresses,
+        createdBy: req.user.USERNAME,
+        createdByRole: 'employee',
+        defaultPassword: password
+      }
+    });
+
+  } catch (error) {
+    await connection.rollback();
+    console.error('Employee create customer with multiple addresses error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating customer with multiple addresses',
+      error: error.message
+    });
+  } finally {
+    connection.release();
+  }
+};
+
+// Get customer details by employee (same functionality as admin)
+const getCustomerDetailsByEmployee = async (req, res) => {
+  try {
+    const { customerId } = req.params;
+
+    // Get customer details with retailer info
+    const [customerDetails] = await db.promise().query(
+      `SELECT u.*, r.RET_ID, r.RET_CODE, r.RET_TYPE, r.RET_NAME as RETAILER_NAME,
+              r.RET_ADDRESS as RETAILER_ADDRESS, r.RET_CITY as RETAILER_CITY,
+              r.RET_STATE as RETAILER_STATE, r.RET_LAT, r.RET_LONG, r.BARCODE_URL
+       FROM user_info u 
+       LEFT JOIN retailer_info r ON u.MOBILE = r.RET_MOBILE_NO 
+       WHERE u.USER_ID = ? AND u.ISACTIVE = 'Y'`,
+      [customerId]
+    );
+
+    if (customerDetails.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    // Get customer addresses
+    const [addresses] = await db.promise().query(
+      'SELECT * FROM customer_address WHERE USER_ID = ? AND DEL_STATUS = "N" ORDER BY IS_DEFAULT DESC, CREATED_DATE DESC',
+      [customerId]
+    );
+
+    // Get customer order summary
+    const [orderSummary] = await db.promise().query(
+      `SELECT 
+        COUNT(*) as total_orders,
+        SUM(CASE WHEN CO_STATUS = 'completed' THEN 1 ELSE 0 END) as completed_orders,
+        SUM(CASE WHEN CO_STATUS = 'pending' THEN 1 ELSE 0 END) as pending_orders,
+        SUM(CASE WHEN CO_STATUS = 'cancelled' THEN 1 ELSE 0 END) as cancelled_orders,
+        SUM(CO_TOTAL_AMT) as total_order_value
+       FROM cust_order 
+       WHERE CO_CUST_MOBILE = ?`,
+      [customerDetails[0].MOBILE]
+    );
+
+    res.json({
+      success: true,
+      message: 'Customer details fetched successfully by employee',
+      data: {
+        customer: customerDetails[0],
+        addresses: addresses,
+        orderSummary: orderSummary[0] || {
+          total_orders: 0,
+          completed_orders: 0,
+          pending_orders: 0,
+          cancelled_orders: 0,
+          total_order_value: 0
+        }
+      },
+      accessedBy: req.user.USERNAME,
+      accessedByRole: 'employee'
+    });
+
+  } catch (error) {
+    console.error('Employee get customer details error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching customer details',
+      error: error.message
+    });
+  }
+};
+
+// Search customers by employee (same functionality as admin)
+const searchCustomersByEmployee = async (req, res) => {
+  try {
+    const { query, page = 1, limit = 10 } = req.query;
+    const offset = (page - 1) * limit;
+
+    if (!query) {
+      return res.status(400).json({
+        success: false,
+        message: 'Search query is required'
+      });
+    }
+
+    // Search customers by name, email, mobile, or address
+    const [customers] = await db.promise().query(
+      `SELECT u.USER_ID, u.USERNAME, u.EMAIL, u.MOBILE, u.CITY, u.PROVINCE, 
+              u.ADDRESS, u.CREATED_DATE, u.USER_TYPE, u.ISACTIVE,
+              r.RET_ID, r.RET_CODE, r.RET_TYPE, r.RET_NAME as RETAILER_NAME
+       FROM user_info u 
+       LEFT JOIN retailer_info r ON u.MOBILE = r.RET_MOBILE_NO 
+       WHERE u.USER_TYPE = 'customer' 
+       AND u.ISACTIVE = 'Y'
+       AND (
+         u.USERNAME LIKE ? OR 
+         u.EMAIL LIKE ? OR 
+         u.MOBILE LIKE ? OR 
+         u.CITY LIKE ? OR 
+         u.ADDRESS LIKE ?
+       )
+       ORDER BY u.CREATED_DATE DESC
+       LIMIT ? OFFSET ?`,
+      [
+        `%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`,
+        parseInt(limit), offset
+      ]
+    );
+
+    // Get total count for pagination
+    const [countResult] = await db.promise().query(
+      `SELECT COUNT(*) as total
+       FROM user_info u 
+       WHERE u.USER_TYPE = 'customer' 
+       AND u.ISACTIVE = 'Y'
+       AND (
+         u.USERNAME LIKE ? OR 
+         u.EMAIL LIKE ? OR 
+         u.MOBILE LIKE ? OR 
+         u.CITY LIKE ? OR 
+         u.ADDRESS LIKE ?
+       )`,
+      [`%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`, `%${query}%`]
+    );
+
+    const totalCustomers = countResult[0].total;
+    const totalPages = Math.ceil(totalCustomers / limit);
+
+    res.json({
+      success: true,
+      message: 'Customers search completed by employee',
+      data: {
+        customers: customers,
+        pagination: {
+          currentPage: parseInt(page),
+          totalPages: totalPages,
+          totalCustomers: totalCustomers,
+          limit: parseInt(limit),
+          hasNext: page < totalPages,
+          hasPrev: page > 1
+        },
+        searchQuery: query
+      },
+      searchedBy: req.user.USERNAME,
+      searchedByRole: 'employee'
+    });
+
+  } catch (error) {
+    console.error('Employee search customers error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error searching customers',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   fetchOrders,
   searchOrders,
@@ -1487,5 +2153,9 @@ module.exports = {
   getStaMaster,
   getTodayDwr,
   startDay,
-  endDay
+  endDay,
+  createCustomerByEmployee,
+  createCustomerWithMultipleAddressesByEmployee,
+  getCustomerDetailsByEmployee,
+  searchCustomersByEmployee
 }; 

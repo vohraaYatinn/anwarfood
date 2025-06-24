@@ -1,4 +1,5 @@
 const { pool: db } = require('../config/database');
+const { base_url } = require('../environment');
 
 const addToCart = async (req, res) => {
   try {
@@ -709,7 +710,7 @@ const placeOrder = async (req, res) => {
           orderId: orderId,
           orderNumber: orderNumber,
           orderTotal: orderTotal,
-          paymentImage: req.uploadedFile ? `/uploads/orders/${req.uploadedFile.filename}` : null,
+          paymentImage: req.uploadedFile ? `${base_url}/uploads/orders/${req.uploadedFile.filename}` : null,
           deliveryAddress: {
             address: orderAddress.ADDRESS,
             city: orderAddress.CITY,
