@@ -373,7 +373,11 @@ class _RetailerListPageState extends State<RetailerListPage> {
                                             ? Image.network(
                                                 retailer['RET_PHOTO'].toString().startsWith('http')
                                                     ? retailer['RET_PHOTO']
+<<<<<<< HEAD
                                                     : '${retailer['RET_PHOTO']}',
+=======
+                                                    : 'http://192.168.29.96:3000/uploads/retailers/profiles/${retailer['RET_PHOTO']}',
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
                                                 width: 60,
                                                 height: 60,
                                                 fit: BoxFit.cover,

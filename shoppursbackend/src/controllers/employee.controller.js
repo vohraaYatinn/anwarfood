@@ -1672,12 +1672,18 @@ const createCustomerByEmployee = async (req, res) => {
     createDirectory(path.join(__dirname, '../../uploads/retailers/qrcode'));
 
     let qrFileName = null;
+<<<<<<< HEAD
     let qrFullPath = null;
+=======
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
     try {
       // Generate QR code for the phone number
       qrFileName = `qr_${mobile}_${Date.now()}.png`;
       const qrPath = path.join(__dirname, '../../uploads/retailers/qrcode', qrFileName);
+<<<<<<< HEAD
       qrFullPath = `${base_url}/uploads/retailers/qrcode/${qrFileName}`;
+=======
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
       
       // Convert phone to string and add country code
       const phoneWithCode = `+91${mobile.toString()}`;
@@ -1697,7 +1703,11 @@ const createCustomerByEmployee = async (req, res) => {
       // Continue without QR code if generation fails
     }
 
+<<<<<<< HEAD
     // Insert retailer profile with full QR code URL
+=======
+    // Insert retailer profile
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
     await connection.query(
       `INSERT INTO retailer_info (
         RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
@@ -1722,7 +1732,11 @@ const createCustomerByEmployee = async (req, res) => {
         long || null,
         req.user.USERNAME,
         req.user.USERNAME,
+<<<<<<< HEAD
         qrFullPath
+=======
+        qrFileName
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
       ]
     );
 
@@ -1901,6 +1915,7 @@ const createCustomerWithMultipleAddressesByEmployee = async (req, res) => {
     createDirectory(path.join(__dirname, '../../uploads/retailers/qrcode'));
 
     let qrFileName = null;
+<<<<<<< HEAD
     let qrFullPath = null;
     try {
       // Generate QR code for the phone number
@@ -1912,6 +1927,13 @@ const createCustomerWithMultipleAddressesByEmployee = async (req, res) => {
       const phoneWithCode = `+91${mobile.toString()}`;
       
       // Generate QR code
+=======
+    try {
+      qrFileName = `qr_${mobile}_${Date.now()}.png`;
+      const qrPath = path.join(__dirname, '../../uploads/retailers/qrcode', qrFileName);
+      const phoneWithCode = `+91${mobile.toString()}`;
+      
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
       await QRCode.toFile(qrPath, phoneWithCode, {
         errorCorrectionLevel: 'H',
         width: 500,
@@ -1923,10 +1945,16 @@ const createCustomerWithMultipleAddressesByEmployee = async (req, res) => {
       });
     } catch (qrError) {
       console.error('QR Code generation error:', qrError);
+<<<<<<< HEAD
       // Continue without QR code if generation fails
     }
 
     // Insert retailer profile with full QR code URL
+=======
+    }
+
+    // Insert retailer profile
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
     await connection.query(
       `INSERT INTO retailer_info (
         RET_CODE, RET_TYPE, RET_NAME, RET_MOBILE_NO, RET_ADDRESS, RET_PIN_CODE, 
@@ -1951,7 +1979,11 @@ const createCustomerWithMultipleAddressesByEmployee = async (req, res) => {
         long || null,
         req.user.USERNAME,
         req.user.USERNAME,
+<<<<<<< HEAD
         qrFullPath
+=======
+        qrFileName
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
       ]
     );
 

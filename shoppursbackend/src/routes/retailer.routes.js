@@ -2,7 +2,11 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth.middleware');
 const { retailerProfileUpload, retailerBarcodeUpload } = require('../middleware/upload.middleware');
+<<<<<<< HEAD
 const { base_url } = require('../../environment');
+=======
+const { base_url } = require('../environment');
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
 const {
   getRetailerList,
   getRetailerInfo,
@@ -45,8 +49,13 @@ router.post('/upload-profile', authMiddleware, retailerProfileUpload, (req, res)
       message: 'Profile image uploaded successfully',
       data: {
         filename: req.uploadedFile.filename,
+<<<<<<< HEAD
         path: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`,
         full_path: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`,
+=======
+        path: req.uploadedFile.path,
+        url: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`,
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
         originalname: req.uploadedFile.originalname,
         size: req.uploadedFile.size
       }
@@ -76,8 +85,13 @@ router.post('/upload-barcode', authMiddleware, retailerBarcodeUpload, (req, res)
       message: 'Barcode image uploaded successfully',
       data: {
         filename: req.uploadedFile.filename,
+<<<<<<< HEAD
         path: `${base_url}/uploads/retailers/barcodes/${req.uploadedFile.filename}`,
         full_path: `${base_url}/uploads/retailers/barcodes/${req.uploadedFile.filename}`,
+=======
+        path: req.uploadedFile.path,
+        url: `${base_url}/uploads/retailers/barcodes/${req.uploadedFile.filename}`,
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
         originalname: req.uploadedFile.originalname,
         size: req.uploadedFile.size
       }

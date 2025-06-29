@@ -3,7 +3,11 @@ const router = express.Router();
 const { getProductList, getProductDetails, getProductsUnderCategory, getProductsUnderSubCategory, getProductUnits, searchProducts, getProductIdByBarcode } = require('../controllers/product.controller');
 const { productImagesUpload } = require('../middleware/upload.middleware');
 const authMiddleware = require('../middleware/auth.middleware');
+<<<<<<< HEAD
 const { base_url } = require('../../environment');
+=======
+const { base_url } = require('../environment');
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
 
 router.get('/list', authMiddleware, getProductList);
 router.get('/details/:id', authMiddleware, getProductDetails);
@@ -25,8 +29,13 @@ router.post('/upload-images', authMiddleware, productImagesUpload, (req, res) =>
 
     const uploadedImages = req.uploadedFiles.map(file => ({
       filename: file.filename,
+<<<<<<< HEAD
       path: `${base_url}/uploads/products/${file.filename}`,
       full_path: `${base_url}/uploads/products/${file.filename}`,
+=======
+      path: file.path,
+      url: `${base_url}/uploads/products/${file.filename}`,
+>>>>>>> 883a26ad3e0c7f1e85864d8b4a8a85bbdb098783
       originalname: file.originalname,
       size: file.size
     }));
