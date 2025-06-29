@@ -14,6 +14,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../../config/api_config.dart';
 import '../../widgets/common_bottom_navbar.dart';
+import 'package:flutter/services.dart';
 
 class ProductListPage extends StatefulWidget {
   const ProductListPage({Key? key}) : super(key: key);
@@ -626,7 +627,7 @@ class _ProductListPageState extends State<ProductListPage> {
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(12),
                                           child: Image.network(
-                                            '${ApiConfig.baseUrl}/uploads/subcategory/${subCat.imageUrl}',
+                                            '${subCat.imageUrl}',
                                             width: 52,
                                             height: 52,
                                             fit: BoxFit.cover,
@@ -687,7 +688,7 @@ class _ProductListPageState extends State<ProductListPage> {
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Image.network(
-                                        '${ApiConfig.baseUrl}/uploads/products/${prod.image1}',
+                                        '${prod.image1}',
                                         width: 70,
                                         height: 70,
                                         fit: BoxFit.contain,
@@ -805,7 +806,7 @@ class _ProductListPageState extends State<ProductListPage> {
                                           ? ClipRRect(
                                               borderRadius: BorderRadius.circular(8),
                                               child: Image.network(
-                                                '${ApiConfig.baseUrl}/uploads/products/${prod['PROD_IMAGE_1']}',
+                                                '${prod['PROD_IMAGE_1']}',
                                                 width: 38,
                                                 height: 38,
                                                 fit: BoxFit.cover,
@@ -928,6 +929,59 @@ class BarcodeScannerPage extends StatefulWidget {
 class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
   MobileScannerController cameraController = MobileScannerController();
   bool isProcessing = false;
+  bool hasPermission = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkCameraPermission();
+  }
+
+  Future<void> _checkCameraPermission() async {
+    final status = await Permission.camera.status;
+    if (status == PermissionStatus.granted) {
+      setState(() {
+        hasPermission = true;
+      });
+    } else if (status == PermissionStatus.denied) {
+      final result = await Permission.camera.request();
+      setState(() {
+        hasPermission = result == PermissionStatus.granted;
+      });
+    } else if (status == PermissionStatus.permanentlyDenied) {
+      _showPermissionDeniedDialog();
+    }
+  }
+
+  void _showPermissionDeniedDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Camera Permission Required'),
+          content: const Text(
+            'Camera permission is required to scan barcodes. Please enable it in your device settings.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                Navigator.of(context).pop(); // Close scanner page
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                openAppSettings();
+              },
+              child: const Text('Settings'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -937,6 +991,53 @@ class _BarcodeScannerPageState extends State<BarcodeScannerPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (!hasPermission) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(
+            widget.title,
+            style: const TextStyle(color: Colors.white),
+          ),
+        ),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.camera_alt_outlined,
+                size: 64,
+                color: Colors.white,
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Camera permission required',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Please allow camera access to scan barcodes',
+                style: TextStyle(
+                  color: Colors.grey,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(

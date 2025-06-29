@@ -48,7 +48,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs access to your photo library to upload delivery confirmation images.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs access to your camera to take delivery confirmation photos.</string>
+	<string>This app needs access to your camera to scan barcodes and QR codes, and to take delivery confirmation photos.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs access to microphone when you record a video</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

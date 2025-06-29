@@ -1,7 +1,7 @@
 const { pool: db } = require('../config/database');
 const path = require('path');
 const fs = require('fs');
-const { base_url } = require('../environment');
+const { base_url } = require('../../environment');
 
 // Update User Profile (Name and Photo)
 const updateProfile = async (req, res) => {
@@ -62,7 +62,7 @@ const updateProfile = async (req, res) => {
     if (req.uploadedFile) {
       // Delete old profile photo if exists
       if (user.PHOTO) {
-        const oldPhotoPath = path.join(__dirname, '../../', user.PHOTO);
+        const oldPhotoPath = path.join(__dirname, '../../', 'uploads/users/profiles/', path.basename(user.PHOTO));
         if (fs.existsSync(oldPhotoPath)) {
           try {
             fs.unlinkSync(oldPhotoPath);

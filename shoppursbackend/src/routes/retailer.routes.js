@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const authMiddleware = require('../middleware/auth.middleware');
 const { retailerProfileUpload, retailerBarcodeUpload } = require('../middleware/upload.middleware');
-const { base_url } = require('../environment');
+const { base_url } = require('../../environment');
 const {
   getRetailerList,
   getRetailerInfo,
@@ -40,15 +40,13 @@ router.post('/upload-profile', authMiddleware, retailerProfileUpload, (req, res)
       });
     }
 
-    // Here you would typically save the file path to the database
-    // For now, just return the uploaded file info
     res.json({
       success: true,
       message: 'Profile image uploaded successfully',
       data: {
         filename: req.uploadedFile.filename,
-        path: req.uploadedFile.path,
-        url: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`,
+        path: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`,
+        full_path: `${base_url}/uploads/retailers/profiles/${req.uploadedFile.filename}`,
         originalname: req.uploadedFile.originalname,
         size: req.uploadedFile.size
       }
@@ -73,15 +71,13 @@ router.post('/upload-barcode', authMiddleware, retailerBarcodeUpload, (req, res)
       });
     }
 
-    // Here you would typically save the file path to the database
-    // For now, just return the uploaded file info
     res.json({
       success: true,
       message: 'Barcode image uploaded successfully',
       data: {
         filename: req.uploadedFile.filename,
-        path: req.uploadedFile.path,
-        url: `${base_url}/uploads/retailers/barcodes/${req.uploadedFile.filename}`,
+        path: `${base_url}/uploads/retailers/barcodes/${req.uploadedFile.filename}`,
+        full_path: `${base_url}/uploads/retailers/barcodes/${req.uploadedFile.filename}`,
         originalname: req.uploadedFile.originalname,
         size: req.uploadedFile.size
       }
